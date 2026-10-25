@@ -24,15 +24,13 @@ python -m http.server 8770
 
 Poi apri http://localhost:8770 nel browser.
 
-## Pubblicarla (gratis)
+## Dove è pubblicata
 
-Per installarla su iPhone deve stare su un indirizzo `https`. Il modo più semplice, senza programmi da installare:
+**https://michelepallott-glitch.github.io/scheda/** (GitHub Pages, dal ramo `main` del repository
+`michelepallott-glitch/scheda`). Non cambiare indirizzo: i dati di chi la usa sono legati a questo.
 
-1. Vai su https://app.netlify.com/drop (serve un account Netlify gratuito).
-2. Trascina la cartella `Allenamento` nella pagina.
-3. Netlify ti dà un indirizzo tipo `https://nome-a-caso.netlify.app`, che puoi rinominare dalle impostazioni del sito.
-
-In alternativa: GitHub Pages, caricando questi file in un repository pubblico.
+Per pubblicare un aggiornamento: su GitHub apri il repository → **Add file → Upload files**, trascina i file cambiati
+(per le icone usa la cartella `icone`) → **Commit changes**. Il sito si aggiorna in 1-2 minuti.
 
 ## Installarla sull'iPhone
 

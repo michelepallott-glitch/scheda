@@ -595,19 +595,114 @@ function grafico(punti, unita) {
     ${punti.map((p, i) => `<circle cx="${X(p.data).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="${i === punti.length - 1 ? 7 : 5}" fill="${i === punti.length - 1 ? "var(--verde)" : "var(--arancio)"}" stroke="var(--surface)" stroke-width="2"><title>${esc(dataBreve(p.data))}: ${fmt(Math.round(p.y * 10) / 10)}${p.variante ? " · " + esc(p.variante) : ""}</title></circle>`).join("")}
   </svg>`;
 }
+// ---------------------------------------------------------------- peso settimana per settimana
+// Ogni settimana (da lunedi') ha la media delle pesate; la variazione e' divisa per le settimane passate dalla
+// pesata precedente, cosi' un buco di un mese non sembra un salto di un chilo in una settimana.
+function settimanePeso(punti) {
+  const per = new Map();
+  for (const p of punti) { const k = iso(lunedi(daIso(p.data))); per.set(k, [...(per.get(k) || []), p.y]); }
+  const sett = [...per.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([s, v]) => ({settimana: s, media: v.reduce((a, b) => a + b, 0) / v.length, n: v.length}));
+  sett.forEach((w, i) => { if (i) { w.gap = Math.max(1, Math.round((daIso(w.settimana) - daIso(sett[i - 1].settimana)) / (7 * 864e5)));
+    w.delta = (w.media - sett[i - 1].media) / w.gap; } });
+  return sett;
+}
+const segno = (v, d = 1) => (v > 0 ? "+" : v < 0 ? "−" : "±") + fmt(Math.abs(Math.round(v * 10 ** d) / 10 ** d));
+const meseAnno = d => `${["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"][d.getMonth()]} ${d.getFullYear()}`;
+
+// andamento: media settimanale con la linea tratteggiata dell'obiettivo
+function graficoPesoSettimane(sett, meta) {
+  if (sett.length < 2) return `<p class="vuoto">Servono pesate in almeno due settimane diverse per vedere l'andamento.</p>`;
+  const W = 640, H = 260, m = {l: 62, r: 14, t: 26, b: 36};
+  const ys = sett.map(w => w.media).concat(meta ? [meta] : []);
+  const lo = Math.floor(Math.min(...ys) - 0.5), hi = Math.ceil(Math.max(...ys) + 0.5);
+  const t0 = daIso(sett[0].settimana).getTime(), t1 = daIso(sett[sett.length - 1].settimana).getTime();
+  const X = s => m.l + (daIso(s).getTime() - t0) / Math.max(1, t1 - t0) * (W - m.l - m.r);
+  const Y = v => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+  const gid = "pp" + Math.random().toString(36).slice(2, 7);
+  const linea = sett.map((w, i) => (i ? "L" : "M") + X(w.settimana).toFixed(1) + "," + Y(w.media).toFixed(1)).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Peso medio per settimana">
+    <defs><linearGradient id="${gid}" x1="0" x2="1"><stop offset="0" style="stop-color:var(--arancio)"/><stop offset="1" style="stop-color:var(--verde)"/></linearGradient>
+      <linearGradient id="${gid}a" x1="0" x2="0" y1="0" y2="1"><stop offset="0" style="stop-color:var(--arancio);stop-opacity:.18"/><stop offset="1" style="stop-color:var(--arancio);stop-opacity:0"/></linearGradient></defs>
+    ${[lo, (lo + hi) / 2, hi].map(t => `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--line)"/><text x="${m.l - 8}" y="${Y(t) + 7}" text-anchor="end" font-size="22" fill="var(--muted)">${fmt(t)}</text>`).join("")}
+    ${meta ? `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(meta)}" y2="${Y(meta)}" stroke="var(--verde)" stroke-width="2" stroke-dasharray="8 7"/>
+      <text x="${W - m.r}" y="${Y(meta) - 8}" text-anchor="end" font-size="22" font-weight="700" fill="var(--verde)">Obiettivo ${fmt(meta)} kg</text>` : ""}
+    <path d="M${X(sett[0].settimana)},${H - m.b} L${linea.slice(1)} L${X(sett[sett.length - 1].settimana)},${H - m.b} Z" fill="url(#${gid}a)"/>
+    <path d="${linea}" fill="none" stroke="url(#${gid})" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${sett.map((w, i) => `<circle cx="${X(w.settimana).toFixed(1)}" cy="${Y(w.media).toFixed(1)}" r="${i === sett.length - 1 ? 7 : 5}" fill="${i === sett.length - 1 ? "var(--verde)" : "var(--arancio)"}" stroke="var(--surface)" stroke-width="2"><title>Settimana del ${esc(dataBreve(w.settimana))}: ${fmt(Math.round(w.media * 10) / 10)} kg (${w.n} ${w.n === 1 ? "pesata" : "pesate"})</title></circle>`).join("")}
+    <text x="${m.l}" y="${H - 6}" font-size="22" fill="var(--muted)">${esc(dataBreve(sett[0].settimana))}</text>
+    <text x="${W - m.r}" y="${H - 6}" font-size="22" fill="var(--muted)" text-anchor="end">${esc(dataBreve(sett[sett.length - 1].settimana))}</text>
+  </svg>`;
+}
+// variazione settimanale: barre sopra o sotto lo zero; verdi se vanno verso l'obiettivo, arancioni se si allontanano
+function graficoVariazioni(sett, salire) {
+  const barre = sett.filter(w => w.delta != null).slice(-12);
+  if (!barre.length) return "";
+  const W = 640, H = 230, m = {l: 14, r: 14, t: 34, b: 34};
+  const max = Math.max(0.3, ...barre.map(w => Math.abs(w.delta)));
+  const Y0 = m.t + (H - m.t - m.b) / 2, scala = (H - m.t - m.b) / 2 / max;
+  const passo = (W - m.l - m.r) / barre.length, lb = Math.min(44, passo * 0.6);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Variazione del peso settimana per settimana">
+    <line x1="${m.l}" x2="${W - m.r}" y1="${Y0}" y2="${Y0}" stroke="var(--muted)" stroke-width="1.5"/>
+    ${barre.map((w, i) => {
+      const x = m.l + i * passo + (passo - lb) / 2, h = Math.max(2, Math.abs(w.delta) * scala), su = w.delta >= 0;
+      const buona = salire ? su : !su, col = Math.abs(w.delta) < 0.05 ? "var(--muted)" : buona ? "var(--verde)" : "var(--arancio)";
+      return `<g><title>Settimana del ${esc(dataBreve(w.settimana))}: ${segno(w.delta, 2)} kg${w.gap > 1 ? ` a settimana (media su ${w.gap} settimane)` : ""}</title>
+        <rect x="${x.toFixed(1)}" y="${(su ? Y0 - h : Y0).toFixed(1)}" width="${lb.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${col}"/>
+        ${barre.length <= 8 || i === barre.length - 1 ? `<text x="${(x + lb / 2).toFixed(1)}" y="${(su ? Y0 - h - 8 : Y0 + h + 22).toFixed(1)}" text-anchor="middle" font-size="20" font-weight="700" fill="var(--ink-2)">${segno(w.delta)}</text>` : ""}
+        ${i === 0 || i === barre.length - 1 ? `<text x="${(x + lb / 2).toFixed(1)}" y="${H - 4}" text-anchor="middle" font-size="20" fill="var(--muted)">${esc(dataBreve(w.settimana))}</text>` : ""}</g>`;
+    }).join("")}
+  </svg>`;
+}
 function bloccoPeso() {
   const punti = [...D.pesate].sort((a, b) => a.data.localeCompare(b.data)).map(p => ({data: p.data, y: p.kg}));
-  if (!punti.length) return "";
-  const ora = punti[punti.length - 1], meta = D.obiettivo_peso;
-  return `<div class="blocco"><h3>Peso corporeo</h3>
-    <div class="campi" style="margin-top:8px"><div><div class="eyebrow">Adesso</div><div class="target">${fmt(ora.y)} kg</div><div class="sub">${esc(dataBreve(ora.data))}</div></div>
-      <div><div class="eyebrow">Obiettivo</div><div class="target">${meta ? fmt(meta) + " kg" : "–"}</div><div class="sub">${meta ? (Math.abs(meta - ora.y) < 0.1 ? "raggiunto" : (meta > ora.y ? "mancano " : "da perdere ") + fmt(Math.abs(meta - ora.y)) + " kg") : "impostalo da Altro"}</div></div></div>
-    <div class="grafico" style="margin-top:8px">${grafico(punti, "kg")}</div></div>`;
+  const modulo = `<div class="controlli"><input id="peso-oggi" inputmode="decimal" placeholder="Peso di oggi (kg)" aria-label="Peso di oggi in kg" style="flex:1;min-width:0">
+      <button class="pulsante piccolo" type="button" id="peso-salva">Salva peso</button></div>`;
+  if (!punti.length) return `<div class="blocco pila"><h3>Peso corporeo</h3><p class="sub">Nessuna pesata ancora. L'obiettivo lo imposti da Altro.</p>${modulo}</div>`;
+  const sett = settimanePeso(punti), ora = sett[sett.length - 1], primo = punti[0], meta = D.obiettivo_peso;
+  const salire = meta ? meta >= primo.y : true;
+  // ritmo: confronto con la settimana di circa un mese prima (o con la prima disponibile)
+  const rif = [...sett].reverse().find(w => (daIso(ora.settimana) - daIso(w.settimana)) / (7 * 864e5) >= 4) || sett[0];
+  const settRif = Math.max(1, Math.round((daIso(ora.settimana) - daIso(rif.settimana)) / (7 * 864e5)));
+  const ritmo = sett.length > 1 ? (ora.media - rif.media) / settRif : null;
+  let stima = "";
+  if (meta && ritmo != null) {
+    const manca = meta - ora.media;
+    if (Math.abs(manca) < 0.2) stima = "Obiettivo raggiunto: ora l'importante è mantenerlo.";
+    else if (Math.abs(ritmo) < 0.02) stima = "Peso stabile: a questo ritmo non ti avvicini all'obiettivo.";
+    else if (Math.sign(ritmo) === Math.sign(manca)) stima = `A questo ritmo arrivi a ${fmt(meta)} kg verso <b>${meseAnno(piuGiorni(daIso(ora.settimana), Math.round(manca / ritmo * 7)))}</b>.`;
+    else stima = "A questo ritmo ti stai allontanando dall'obiettivo.";
+  }
+  const pct = meta && meta !== primo.y ? Math.min(100, Math.max(0, (ora.media - primo.y) / (meta - primo.y) * 100)) : null;
+  return `<div class="blocco pila"><h3>Peso corporeo</h3>
+    <div class="campi" style="grid-template-columns:repeat(3,1fr)">
+      <div><div class="eyebrow">Partenza</div><div class="target">${fmt(primo.y)} kg</div><div class="sub">${esc(dataBreve(primo.data))}</div></div>
+      <div><div class="eyebrow">Adesso</div><div class="target">${fmt(Math.round(ora.media * 10) / 10)} kg</div><div class="sub">sett. del ${esc(dataBreve(ora.settimana))}</div></div>
+      <div><div class="eyebrow">Arrivo</div><div class="target">${meta ? fmt(meta) + " kg" : "–"}</div><div class="sub">${meta ? (Math.abs(meta - ora.media) < 0.2 ? "raggiunto" : "mancano " + fmt(Math.round(Math.abs(meta - ora.media) * 10) / 10) + " kg") : "da Altro"}</div></div></div>
+    ${pct != null ? `<div style="height:10px;background:var(--bg);border-radius:5px"><div style="height:10px;width:${pct.toFixed(0)}%;background:var(--scia);border-radius:5px"></div></div>` : ""}
+    ${ritmo != null ? `<div class="avviso"><div class="eyebrow">Ritmo nell'ultimo mese</div>
+      <div class="target" style="margin-top:2px">${segno(ritmo, 2)} kg a settimana</div>${stima ? `<div class="dett">${stima}</div>` : ""}</div>` : ""}
+    <div><div class="eyebrow" style="margin-bottom:4px">Media settimanale</div><div class="grafico">${graficoPesoSettimane(sett, meta)}</div></div>
+    ${sett.some(w => w.delta != null) ? `<div><div class="eyebrow" style="margin-bottom:4px">Variazione settimana per settimana</div>
+      <div class="sub" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px">
+        <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--verde);margin-right:6px"></i>verso l'obiettivo</span>
+        <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--arancio);margin-right:6px"></i>nella direzione opposta</span></div>
+      <div class="grafico">${graficoVariazioni(sett, salire)}</div></div>` : ""}
+    ${modulo}
+    <p class="sub">Pesati al mattino, sempre nelle stesse condizioni, una o due volte a settimana: conta la media della settimana.</p></div>`;
+}
+function collegaPeso() {
+  if (!$("peso-salva")) return;
+  $("peso-salva").onclick = () => {
+    const kg = num($("peso-oggi").value);
+    if (kg == null || kg < 25 || kg > 300) return avvisa("Scrivi il peso in kg, per esempio 65,4.");
+    D.pesate = [...D.pesate.filter(p => p.data !== oggi()), {data: oggi(), kg}]; salva(); avvisa("Peso salvato."); renderFermo();
+  };
 }
 function vistaStorico() {
   const el = $("v-storico");
   const lista = ordinati();
-  if (!lista.length) { el.innerHTML = bloccoPeso() + `<div class="blocco"><p class="vuoto">Nessuna seduta salvata. Dalla sezione Oggi segna le serie con ✓ e premi “Salva seduta”.</p></div>`; return; }
+  if (!lista.length) { el.innerHTML = bloccoPeso() + `<div class="blocco"><p class="vuoto">Nessuna seduta salvata. Dalla sezione Oggi segna le serie con ✓ e premi “Salva seduta”.</p></div>`; collegaPeso(); return; }
   const nomi = [...new Set(lista.flatMap(a => a.esercizi.map(e => e.nome)))].sort((a, b) => a.localeCompare(b, "it"));
   const scelto = nomi.includes(S.esStorico) ? S.esStorico : nomi[0];
   const punti = lista.slice().reverse().map(a => { const e = a.esercizi.find(x => x.nome === scelto); return e ? {data: a.data, y: indicatore(e), variante: e.variante, tipo: e.tipo} : null; }).filter(p => p && p.y > 0);
@@ -627,6 +722,7 @@ function vistaStorico() {
         ${a.note ? `<p class="nota">${esc(a.note)}</p>` : ""}
         <button type="button" class="pulsante pericolo piccolo" data-elimina="${esc(a.id)}" style="margin-top:8px">Elimina seduta</button>
       </details>`).join("")}</div>`;
+  collegaPeso();
   $("es-storico").onchange = ev => { S.esStorico = ev.target.value; memo.set("scheda-es", S.esStorico); render(); };
   el.querySelectorAll("[data-elimina]").forEach(b => b.onclick = () => {
     if (!confirm("Eliminare questa seduta dallo storico? Le progressioni già applicate restano.")) return;

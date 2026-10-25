@@ -122,5 +122,24 @@ nav.barra button[aria-selected="true"] { color: var(--accent); }
 dialog { border: 0; border-radius: 16px; padding: 0; width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 40px); background: var(--surface); color: var(--ink); }
 dialog::backdrop { background: rgba(0, 0, 0, .45); }
 dialog form { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-@media (prefers-reduced-motion: no-preference) { .pulsante, .spunta { transition: background-color .15s, color .15s; } }
+/* guida a comparsa: una scheda alla volta, con i puntini per sapere a che punto si e' */
+.guida { padding: 20px 18px 16px; display: flex; flex-direction: column; gap: 12px; }
+.guida .eyebrow { color: var(--accent); }
+.guida h2 { font-size: 24px; }
+.guida p, .guida li { font-size: 16px; line-height: 1.5; }
+.guida ol, .guida ul { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.guida .esempio { display: inline-grid; place-items: center; min-width: 34px; height: 28px; padding: 0 6px; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink-2); vertical-align: middle; font: 700 15px/1 var(--display); }
+.guida .esempio.verde { background: var(--ok); border-color: var(--ok); color: #fff; }
+.guida .esempio svg { width: 18px; height: 18px; }
+.guida .puntini { display: flex; gap: 6px; justify-content: center; }
+.guida .puntini i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.guida .puntini i.su { background: var(--accent); }
+.guida .comandi { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+#guida { width: min(480px, calc(100vw - 24px)); }
+@media (prefers-reduced-motion: no-preference) {
+  .pulsante, .spunta { transition: background-color .15s, color .15s; }
+  #guida[open] { animation: entra .2s ease-out; }
+  @keyframes entra { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+}
 @media (max-width: 400px) { .campi { grid-template-columns: 1fr; } }

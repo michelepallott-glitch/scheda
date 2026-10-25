@@ -218,7 +218,7 @@ function vistaOggi() {
       <button class="pulsante pieno" type="button" id="crea-prima">Crea la mia scheda</button>
       <button class="pulsante secondario pieno" type="button" id="crea-esempio">Prova con una scheda di esempio</button></div>` + bloccoInstalla();
     $("crea-prima").onclick = () => { const s = nuovaScheda("La mia scheda"); S.modifica = s.id; mostra("schede"); };
-    $("crea-esempio").onclick = () => { creaEsempio(); render(); };
+    $("crea-esempio").onclick = () => { creaEsempio(); render(); guidaSeNuova("oggi"); };
     return;
   }
   if (!sch || !sch.sedute.length) {
@@ -632,9 +632,9 @@ function vistaStorico() {
 
 // ---------------------------------------------------------------- vista ALTRO
 function bloccoInstalla() {
-  const standalone = window.navigator.standalone || matchMedia("(display-mode: standalone)").matches;
-  if (standalone) return "";
-  return `<div class="avviso"><b>Installala sul telefono</b><p class="dett" style="margin-top:4px">Su iPhone: apri questa pagina in Safari, tocca Condividi (il quadrato con la freccia) e poi “Aggiungi alla schermata Home”. Si apre come un'app e funziona anche senza connessione.</p></div>`;
+  if (installata()) return "";
+  return `<div class="avviso"><b>Installala sul telefono</b><p class="dett" style="margin-top:4px">Si apre come un'app e funziona anche senza connessione.</p>
+    <button class="link" type="button" data-guida="installa">Come si fa</button></div>`;
 }
 function vistaAltro() {
   const el = $("v-altro");
@@ -655,10 +655,13 @@ function vistaAltro() {
       <li><b>Nel mezzo:</b> stesso carico, cerchi una ripetizione in più nella serie più debole.</li>
       <li><b>Una serie sotto il minimo</b> per due sedute di fila: carico -10% o variante precedente.</li>
       <li>Ogni proposta la decidi tu: la applichi, scrivi un carico diverso o la lasci com'è.</li></ol></div>
+    <div class="blocco pila"><h3>Guida</h3><p class="dett">Fa ricomparire le spiegazioni di ogni sezione la prossima volta che la apri.</p>
+      <button class="pulsante secondario" type="button" id="rivedi-guida">Rivedi la guida</button></div>
     <div class="blocco pila"><h3>Cancella tutto</h3><p class="dett">Elimina schede, sedute e peso da questo telefono. Fai prima un backup.</p>
       <button class="pulsante pericolo" type="button" id="cancella">Cancella tutti i dati</button></div>
     <p class="sub" style="text-align:center">Scheda · versione 1.0</p>`;
   $("backup").onclick = esportaBackup;
+  $("rivedi-guida").onclick = () => { memo.del("scheda-guida-viste"); apriGuida("benvenuto"); };
   $("ripristina").onchange = ev => importaBackup(ev.target.files[0]);
   $("p-salva").onclick = () => {
     const kg = num($("p-peso").value), ob = num($("p-obiettivo").value);
@@ -696,6 +699,100 @@ function importaBackup(file) {
   r.readAsText(file);
 }
 
+// ---------------------------------------------------------------- guida a comparsa
+/* La prima volta che si apre una sezione compare una breve guida (una o piu' pagine). Quelle gia' viste sono in
+   localStorage ("scheda-guida-viste"); da Altro si possono rivedere. */
+const ICONA = {
+  spunta: `<span class="esempio verde">✓</span>`, timer: `<span class="esempio">${ICONA_TIMER}</span>`,
+  condividi: `<span class="esempio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M5 11v9h14v-9"/></svg></span>`,
+  piu: `<span class="esempio">＋</span>`,
+};
+const installata = () => window.navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+const suIphone = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let promptAndroid = null;
+window.addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); promptAndroid = ev; });
+
+function paginaInstalla() {
+  if (suIphone()) return {titolo: "Mettila sulla schermata Home", testo: `
+    <ol><li>Apri questa pagina in <b>Safari</b> (non da WhatsApp o Instagram).</li>
+      <li>Tocca ${ICONA.condividi} <b>Condividi</b>, in basso al centro.</li>
+      <li>Scorri e scegli <b>Aggiungi alla schermata Home</b>, poi <b>Aggiungi</b>.</li>
+      <li>Da ora aprila dall'icona col manubrio: si apre a schermo intero e funziona anche senza connessione.</li></ol>`};
+  if (promptAndroid) return {titolo: "Installala sul telefono", testo: `<p>Tocca <b>Installa</b>: l'app comparirà tra le tue app e funzionerà anche senza connessione.</p>`, installa: true};
+  return {titolo: "Installala sul telefono", testo: `
+    <p>Apri questo indirizzo dal telefono:</p><p><b>${esc(location.origin + location.pathname)}</b></p>
+    <ul><li><b>iPhone:</b> in Safari tocca ${ICONA.condividi} Condividi → <b>Aggiungi alla schermata Home</b>.</li>
+      <li><b>Android:</b> in Chrome apri il menu ⋮ → <b>Installa app</b>.</li></ul>`};
+}
+const GUIDE = {
+  benvenuto: () => [
+    {titolo: "Benvenuto in Scheda", testo: `<p>Il tuo quaderno di allenamento: scrivi le tue schede, segni le serie mentre ti alleni e dopo ogni seduta l'app ti propone come progredire.</p>
+      <p>Ti mostro le funzioni man mano che apri le sezioni in basso: <b>Oggi</b>, <b>Schede</b>, <b>Storico</b> e <b>Altro</b>.</p>`},
+    ...(installata() ? [] : [paginaInstalla()]),
+    {titolo: "I tuoi dati restano qui", testo: `<p>Niente account: schede e allenamenti sono salvati solo su questo telefono.</p>
+      <p>Ogni tanto fai un <b>backup</b> da <b>Altro</b> (per esempio su iCloud Drive), così non perdi niente se cambi telefono.</p>`},
+  ],
+  oggi: () => [
+    {titolo: "Oggi: la seduta da fare", testo: `<p>Qui trovi la prossima seduta della scheda in uso. Per ogni esercizio vedi l'obiettivo (serie × ripetizioni o secondi, carico, recupero) e cosa hai fatto l'ultima volta.</p>
+      <p>Dal menu in alto a destra puoi scegliere un'altra seduta.</p>`},
+    {titolo: "Segnare le serie", testo: `<ol><li>Scrivi ripetizioni (o secondi) e kg. Se lasci vuoto vale il numero in grigio.</li>
+      <li>Tocca ${ICONA.spunta} quando hai finito la serie: parte subito il <b>recupero</b>.</li>
+      <li>Tocca ${ICONA.timer} per far ripartire il recupero di quella serie.</li>
+      <li>Nella barra del timer: <b>+15 s</b> per allungarlo, <b>Chiudi</b> per toglierlo. Alla fine suona.</li></ol>`},
+    {titolo: "Salva e progredisci", testo: `<p>A fine allenamento compila durata e fatica (facoltativi) e tocca <b>Salva seduta</b>.</p>
+      <p>L'app ti dice com'è andata e ti propone le <b>progressioni</b>: più carico, la variante successiva o un obiettivo più alto. Puoi applicarle, scrivere un carico tuo o lasciare com'è.</p>
+      <p>Se esci a metà seduta, le serie segnate restano salvate.</p>`},
+  ],
+  schede: () => [
+    {titolo: "Le tue schede", testo: `<p>Una scheda è il tuo programma: contiene una o più <b>sedute</b> (per esempio A, B, C) che si alternano in ordine.</p>
+      <p>Puoi averne più di una: quella con l'etichetta <b>In uso</b> è quella che vedi in Oggi. <b>Duplica</b> serve per partire da una scheda esistente.</p>`},
+    {titolo: "Aggiungere esercizi", testo: `<p>Apri una scheda con <b>Modifica</b> e tocca <b>Aggiungi esercizio</b>. Scegli il tipo:</p>
+      <ul><li><b>Pesi</b>: con il carico in kg.</li><li><b>Zavorrato</b>: corpo libero più kg aggiunti (0 = senza zavorra).</li>
+      <li><b>Corpo libero</b>: ripetizioni, con varianti dalla più facile alla più difficile.</li><li><b>Tenuta</b>: secondi, per esempio planche o front lever.</li></ul>
+      <p>Se non sai il carico lascialo vuoto: lo prende dalla prima seduta.</p>`},
+    {titolo: "Ordine e giorni", testo: `<p>Con ↑ ↓ cambi l'ordine di sedute ed esercizi, con ✎ modifichi un esercizio.</p>
+      <p>Se segni i <b>giorni di allenamento</b>, Oggi ti mostra le prossime date. Puoi anche alternare due settimane diverse, per esempio lun-mer-ven e mar-gio-sab.</p>`},
+  ],
+  storico: () => [
+    {titolo: "Storico e progressi", testo: `<ul><li><b>Andamento</b>: scegli un esercizio e vedi come cresce (massimale stimato, zavorra, secondi o ripetizioni).</li>
+      <li><b>Peso corporeo</b>: si aggiorna con il peso che scrivi nelle sedute o in Altro.</li>
+      <li><b>Diario</b>: tocca una seduta per vedere le serie fatte o eliminarla.</li></ul>`},
+  ],
+  altro: () => [
+    {titolo: "Altro", testo: `<ul><li><b>Backup</b>: salva un file con tutti i tuoi dati; con <b>Ripristina</b> lo ricarichi, anche su un altro telefono.</li>
+      <li><b>Peso</b>: registra il peso di oggi e il tuo obiettivo.</li>
+      <li><b>Come funzionano le progressioni</b>: le regole che usa l'app.</li>
+      <li><b>Rivedi la guida</b>: fa ricomparire questi messaggi.</li></ul>`},
+  ],
+  installa: () => [paginaInstalla()],
+};
+const guideViste = () => memo.get("scheda-guida-viste") || [];
+function guidaSeNuova(nome) {
+  if (guideViste().includes(nome) || $("dialogo").open || $("guida").open) return;
+  setTimeout(() => apriGuida(nome), 350);   // dopo che la sezione e' comparsa
+}
+function apriGuida(nome, pagina = 0) {
+  const pagine = GUIDE[nome]();
+  const p = pagine[pagina], ultima = pagina === pagine.length - 1, d = $("guida");
+  $("guida-corpo").innerHTML = `
+    <div class="eyebrow">${pagine.length > 1 ? `Guida · ${pagina + 1} di ${pagine.length}` : "Guida"}</div>
+    <h2 id="guida-titolo">${p.titolo}</h2>
+    <div class="pila" style="gap:10px">${p.testo}</div>
+    ${p.installa ? `<button class="pulsante" type="button" id="g-installa">Installa</button>` : ""}
+    ${pagine.length > 1 ? `<div class="puntini" aria-hidden="true">${pagine.map((_, i) => `<i class="${i === pagina ? "su" : ""}"></i>`).join("")}</div>` : ""}
+    <div class="comandi">
+      ${pagina > 0 ? `<button class="pulsante secondario piccolo" type="button" id="g-indietro">Indietro</button>` : ultima ? "<span></span>" : `<button class="link" type="button" id="g-salta">Salta</button>`}
+      <button class="pulsante piccolo" type="button" id="g-avanti">${ultima ? "Ho capito" : "Avanti"}</button></div>`;
+  const chiudi = () => { const v = guideViste(); if (!v.includes(nome)) memo.set("scheda-guida-viste", [...v, nome]); d.close(); };
+  $("g-avanti").onclick = () => ultima ? chiudi() : apriGuida(nome, pagina + 1);
+  if ($("g-indietro")) $("g-indietro").onclick = () => apriGuida(nome, pagina - 1);
+  if ($("g-salta")) $("g-salta").onclick = chiudi;
+  if ($("g-installa")) $("g-installa").onclick = async () => { try { await promptAndroid.prompt(); } catch (e) {} promptAndroid = null; chiudi(); };
+  d.onclose = () => { const v = guideViste(); if (!v.includes(nome)) memo.set("scheda-guida-viste", [...v, nome]); };
+  if (!d.open) d.showModal();
+  $("g-avanti").focus();
+}
+
 // ---------------------------------------------------------------- navigazione
 const VISTE = {oggi: vistaOggi, schede: vistaSchede, storico: vistaStorico, altro: vistaAltro};
 function render() {
@@ -703,6 +800,7 @@ function render() {
   $("sottotitolo").textContent = S.vista === "oggi" && sch ? sch.nome : "";
   VISTE[S.vista]();
 }
+document.addEventListener("click", ev => { const b = ev.target.closest("[data-guida]"); if (b) apriGuida(b.dataset.guida); });
 function renderFermo() { const y = window.scrollY; render(); window.scrollTo(0, y); }
 function mostra(v) {
   if (!VISTE[v]) v = "oggi";
@@ -710,6 +808,7 @@ function mostra(v) {
   document.querySelectorAll("nav.barra button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.v === v)));
   Object.keys(VISTE).forEach(k => $("v-" + k).hidden = k !== v);
   render(); window.scrollTo(0, 0);
+  guidaSeNuova(v === "oggi" && !(schedaAttiva() && schedaAttiva().sedute.some(s => s.esercizi.length)) ? "benvenuto" : v);
 }
 document.querySelectorAll("nav.barra button").forEach(b => b.onclick = () => { if (b.dataset.v === "schede" && S.vista === "schede") S.modifica = null; mostra(b.dataset.v); });
 mostra(S.vista);

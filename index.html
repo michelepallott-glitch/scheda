@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scheda</title>
+<meta name="description" content="Diario di allenamento: crea le tue schede, segna le serie e ricevi le progressioni.">
+<meta name="theme-color" content="#eef0ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101214" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Scheda">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone/icona-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icone/apple-touch-icon.png">
+<link rel="stylesheet" href="stile.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="marca"><h1>Scheda</h1><span class="sottotitolo" id="sottotitolo"></span></div>
+  </header>
+  <main>
+    <section id="v-oggi" class="pila"></section>
+    <section id="v-schede" class="pila" hidden></section>
+    <section id="v-storico" class="pila" hidden></section>
+    <section id="v-altro" class="pila" hidden></section>
+  </main>
+</div>
+
+<div class="timer" id="timer" hidden>
+  <div class="in">
+    <div class="tempo" id="timer-tempo">0:00</div>
+    <div class="cosa" id="timer-cosa"></div>
+    <button type="button" id="timer-piu">+15 s</button>
+    <button type="button" id="timer-stop">Chiudi</button>
+  </div>
+</div>
+
+<nav class="barra" role="tablist" aria-label="Sezioni">
+  <button role="tab" data-v="oggi" aria-selected="true"><span class="ic">●</span>Oggi</button>
+  <button role="tab" data-v="schede" aria-selected="false"><span class="ic">≡</span>Schede</button>
+  <button role="tab" data-v="storico" aria-selected="false"><span class="ic">↗</span>Storico</button>
+  <button role="tab" data-v="altro" aria-selected="false"><span class="ic">⋯</span>Altro</button>
+</nav>
+
+<dialog id="dialogo"><form method="dialog" id="dialogo-form"></form></dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

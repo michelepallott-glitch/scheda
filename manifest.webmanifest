@@ -1,0 +1,17 @@
+{
+  "name": "Scheda - diario di allenamento",
+  "short_name": "Scheda",
+  "description": "Crea le tue schede, segna le serie con il timer di recupero e ricevi le progressioni.",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef0ec",
+  "theme_color": "#15181a",
+  "icons": [
+    {"src": "icone/icona-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icone/icona-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icone/icona-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

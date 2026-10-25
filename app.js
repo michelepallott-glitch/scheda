@@ -162,13 +162,14 @@ function avvisa(testo) {
 const T = {fine: 0, id: null, audio: null, lock: null};
 function avviaTimer(secondi, cosa) {
   try { T.audio = T.audio || new (window.AudioContext || window.webkitAudioContext)(); T.audio.resume && T.audio.resume(); } catch (e) {}
-  T.fine = Date.now() + secondi * 1000; $("timer-cosa").textContent = cosa;
+  T.fine = Date.now() + secondi * 1000; T.durata = secondi; $("timer-cosa").textContent = cosa;
   $("timer").hidden = false; $("timer").classList.remove("finito");
   clearInterval(T.id); T.id = setInterval(tick, 250); tick();
   if (navigator.wakeLock && !T.lock) navigator.wakeLock.request("screen").then(l => { T.lock = l; l.addEventListener("release", () => T.lock = null); }).catch(() => {});
 }
 function tick() {
   const resto = (T.fine - Date.now()) / 1000;
+  $("timer-barra").style.transform = `scaleX(${Math.max(0, Math.min(1, resto / (T.durata || 1)))})`;   // la scia si accorcia
   if (resto <= 0) { clearInterval(T.id); $("timer-tempo").textContent = "Vai!"; $("timer").classList.add("finito"); suona(); return; }
   $("timer-tempo").textContent = mmss(Math.ceil(resto));
 }
@@ -181,7 +182,8 @@ function suona() {
   } catch (e) {}
   try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
 }
-$("timer-piu").onclick = () => { if (T.fine < Date.now()) T.fine = Date.now(); T.fine += 15000; $("timer").classList.remove("finito"); clearInterval(T.id); T.id = setInterval(tick, 250); tick(); };
+$("timer-piu").onclick = () => { if (T.fine < Date.now()) { T.fine = Date.now(); T.durata = 0; } T.fine += 15000;
+  T.durata = Math.max(T.durata || 0, (T.fine - Date.now()) / 1000); $("timer").classList.remove("finito"); clearInterval(T.id); T.id = setInterval(tick, 250); tick(); };
 $("timer-stop").onclick = () => { clearInterval(T.id); $("timer").hidden = true; };
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("timer").hidden) tick(); });
 
@@ -574,18 +576,23 @@ function indicatore(e) {
 const UNITA = {pesi: "kg, massimale stimato", zavorrato: "kg di zavorra (o ripetizioni se a corpo libero)", isometria: "secondi, tenuta migliore", corpo_libero: "ripetizioni, serie migliore"};
 function grafico(punti, unita) {
   if (punti.length < 2) return `<p class="vuoto">Servono almeno due sedute per vedere l'andamento.</p>`;
-  const W = 640, H = 220, m = {l: 40, r: 12, t: 12, b: 26};
+  const W = 640, H = 260, m = {l: 62, r: 14, t: 16, b: 36};
   const ys = punti.map(p => p.y), lo0 = Math.min(...ys), hi0 = Math.max(...ys);
   const marg = (hi0 - lo0) * 0.15 || 1, lo = Math.max(0, lo0 - marg), hi = hi0 + marg;
   const t0 = daIso(punti[0].data).getTime(), t1 = daIso(punti[punti.length - 1].data).getTime();
   const X = d => m.l + (daIso(d).getTime() - t0) / Math.max(1, t1 - t0) * (W - m.l - m.r);
   const Y = v => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+  const gid = "scia" + Math.random().toString(36).slice(2, 7);
+  const xs = punti.map(p => X(p.data)), area = `M${xs[0]},${H - m.b} ` + punti.map((p, i) => `L${xs[i].toFixed(1)},${Y(p.y).toFixed(1)}`).join(" ") + ` L${xs[xs.length - 1]},${H - m.b} Z`;
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Andamento (${esc(unita)})">
-    ${[lo, (lo + hi) / 2, hi].map(t => `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${Y(t) + 4}" text-anchor="end" font-size="12" fill="var(--muted)">${fmt(Math.round(t * 10) / 10)}</text>`).join("")}
-    <text x="${m.l}" y="${H - 6}" font-size="12" fill="var(--muted)">${esc(dataBreve(punti[0].data))}</text>
-    <text x="${W - m.r}" y="${H - 6}" font-size="12" fill="var(--muted)" text-anchor="end">${esc(dataBreve(punti[punti.length - 1].data))}</text>
-    <path d="${punti.map((p, i) => (i ? "L" : "M") + X(p.data).toFixed(1) + "," + Y(p.y).toFixed(1)).join("")}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${punti.map(p => `<circle cx="${X(p.data).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"><title>${esc(dataBreve(p.data))}: ${fmt(Math.round(p.y * 10) / 10)}${p.variante ? " · " + esc(p.variante) : ""}</title></circle>`).join("")}
+    <defs><linearGradient id="${gid}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" style="stop-color:var(--arancio)"/><stop offset="1" style="stop-color:var(--verde)"/></linearGradient>
+      <linearGradient id="${gid}a" x1="0" x2="0" y1="0" y2="1"><stop offset="0" style="stop-color:var(--arancio);stop-opacity:.18"/><stop offset="1" style="stop-color:var(--arancio);stop-opacity:0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#${gid}a)"/>
+    ${[lo, (lo + hi) / 2, hi].map(t => `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${Y(t) + 7}" text-anchor="end" font-size="22" fill="var(--muted)">${fmt(Math.round(t * 10) / 10)}</text>`).join("")}
+    <text x="${m.l}" y="${H - 6}" font-size="22" fill="var(--muted)">${esc(dataBreve(punti[0].data))}</text>
+    <text x="${W - m.r}" y="${H - 6}" font-size="22" fill="var(--muted)" text-anchor="end">${esc(dataBreve(punti[punti.length - 1].data))}</text>
+    <path d="${punti.map((p, i) => (i ? "L" : "M") + X(p.data).toFixed(1) + "," + Y(p.y).toFixed(1)).join("")}" fill="none" stroke="url(#${gid})" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    ${punti.map((p, i) => `<circle cx="${X(p.data).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="${i === punti.length - 1 ? 7 : 5}" fill="${i === punti.length - 1 ? "var(--verde)" : "var(--arancio)"}" stroke="var(--surface)" stroke-width="2"><title>${esc(dataBreve(p.data))}: ${fmt(Math.round(p.y * 10) / 10)}${p.variante ? " · " + esc(p.variante) : ""}</title></circle>`).join("")}
   </svg>`;
 }
 function bloccoPeso() {
@@ -808,6 +815,9 @@ function mostra(v) {
   document.querySelectorAll("nav.barra button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.v === v)));
   Object.keys(VISTE).forEach(k => $("v-" + k).hidden = k !== v);
   render(); window.scrollTo(0, 0);
+  // i blocchi della sezione entrano in sequenza; la classe si toglie subito dopo, cosi' i ridisegni non riananimano
+  const sez = $("v-" + v); sez.classList.remove("anima"); void sez.offsetWidth; sez.classList.add("anima");
+  clearTimeout(S.tAnima); S.tAnima = setTimeout(() => sez.classList.remove("anima"), 900);
   guidaSeNuova(v === "oggi" && !(schedaAttiva() && schedaAttiva().sedute.some(s => s.esercizi.length)) ? "benvenuto" : v);
 }
 document.querySelectorAll("nav.barra button").forEach(b => b.onclick = () => { if (b.dataset.v === "schede" && S.vista === "schede") S.modifica = null; mostra(b.dataset.v); });

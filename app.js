@@ -973,6 +973,7 @@ function bloccoEsercizi(lista) {
           <span><b>${esc(d.nome)}</b><span class="sub" style="display:block">${d.tipo === "zavorrato" && d.carico ? "zavorra " : ""}${fmt(ora.y)} ${u} · settimana del ${esc(dataBreve(ora.data))}</span></span>
           <span class="variazione ${cls}">${diff == null ? "prima settimana" : `${segno(diff, 2)} ${u} vs sett. prima`}</span></summary>
         ${s.length > 1 ? `<div class="grafico" style="margin-top:6px">${grafico(s, u, 190)}</div>` : `<p class="sub" style="margin-top:6px">Serve almeno un'altra settimana per vedere l'andamento.</p>`}
+        <button type="button" class="togli-es" data-elimina-nome="${esc(d.nome)}" style="margin-top:8px">Elimina dallo storico</button>
       </details>`;
     }).join("")}</div>`;
 }
@@ -1005,6 +1006,15 @@ function vistaStorico() {
     const aperti = new Set(memo.get("scheda-es-aperti") || []); d.open ? aperti.add(d.dataset.nome) : aperti.delete(d.dataset.nome); memo.set("scheda-es-aperti", [...aperti]);
   }));
   el.querySelectorAll("details.sessione").forEach(d => d.addEventListener("toggle", () => { if (d.open) S.sessioneAperta = d.dataset.id; }));
+  // un esercizio inserito per sbaglio si toglie da tutte le sedute in cui compare; le sedute rimaste vuote spariscono
+  el.querySelectorAll("[data-elimina-nome]").forEach(b => b.onclick = () => {
+    const nome = b.dataset.eliminaNome, con = D.allenamenti.filter(a => a.esercizi.some(e => e.nome === nome));
+    const vuote = con.filter(a => a.esercizi.every(e => e.nome === nome)).length;
+    if (!confirm(`Eliminare "${nome}" dallo storico? Compare in ${con.length} ${con.length === 1 ? "seduta" : "sedute"}${vuote ? ` (${vuote} resterebbero vuote e spariscono)` : ""}. Le schede non cambiano.`)) return;
+    for (const a of con) a.esercizi = a.esercizi.filter(e => e.nome !== nome);
+    D.allenamenti = D.allenamenti.filter(a => a.esercizi.length);
+    salva(); avvisa(`"${nome}" eliminato dallo storico.`); renderFermo();
+  });
   // un esercizio inserito per sbaglio si toglie dalla seduta; se era l'unico, sparisce la seduta
   el.querySelectorAll("[data-elimina-es]").forEach(b => b.onclick = () => {
     const a = D.allenamenti.find(x => x.id === b.dataset.eliminaEs), e = a && a.esercizi[+b.dataset.i];

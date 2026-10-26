@@ -116,6 +116,25 @@ details.sessione summary::-webkit-details-marker { display: none; }
 .vuoto { color: var(--muted); font-style: italic; }
 .mini { display: flex; gap: 4px; }
 .mini button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 10px; width: 36px; height: 34px; cursor: pointer; color: var(--ink-2); }
+/* allenamento libero: il pulsante sotto la testata, sempre a portata */
+.avvia-libero { width: 100%; margin-top: 12px; border: 0; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;
+  background: var(--scia); color: #fff; font: italic 800 18px/1 var(--display); text-transform: uppercase; letter-spacing: .4px;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--arancio) 30%, transparent); }
+.avvia-libero .ic-play { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: rgba(255, 255, 255, .25); font-size: 13px; font-style: normal; }
+.avvia-libero.attivo { background: var(--verde); }
+.aggiungi-es { border: 2px dashed var(--line); background: transparent; box-shadow: none; }
+.piu-meno { display: flex; gap: 8px; margin-top: 10px; }
+.piu-meno button { flex: 1; border: 1.5px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px; font: italic 700 15px/1 var(--display); color: var(--ink-2); cursor: pointer; }
+.togli { border: 0; background: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 0 4px; }
+/* progressi per esercizio */
+details.esercizio-storico { border-top: 1px solid var(--line); padding: 10px 0; }
+details.esercizio-storico:first-of-type { border-top: 0; }
+details.esercizio-storico summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+details.esercizio-storico summary::-webkit-details-marker { display: none; }
+details.esercizio-storico summary b { font: italic 700 17px/1.2 var(--display); }
+.variazione { font: italic 700 13px/1 var(--display); padding: 5px 9px; border-radius: 6px; white-space: nowrap; transform: skewX(-12deg); background: var(--line); color: var(--ink-2); }
+.variazione.su { background: var(--verde-soft); color: var(--verde); }
+.variazione.giu { background: var(--arancio-soft); color: var(--arancio); }
 /* schede dello storico */
 .voce { width: 100%; text-align: left; background: var(--bg); border: 0; border-radius: 14px; padding: 12px 14px; display: flex;
   justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; color: var(--ink); font: inherit; }

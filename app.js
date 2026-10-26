@@ -212,6 +212,9 @@ function righeNuove(e) {
 // ---------------------------------------------------------------- vista OGGI
 function vistaOggi() {
   const el = $("v-oggi");
+  if (S.libero && bozzaLibera()) return vistaLibero(el);
+  S.libero = false;
+  if (S.liberoSalvato) { const t = S.liberoSalvato; S.liberoSalvato = null; setTimeout(() => avvisa(`Allenamento libero salvato nello storico: ${t}.`), 50); }
   const sch = schedaAttiva();
   if (!D.schede.length) {
     el.innerHTML = `<div class="blocco pila"><h2>Benvenuto</h2>
@@ -399,6 +402,138 @@ function decidi(id, applica) {
   }
   p.stato = applica ? "applicata" : "rifiutata"; p.decisa_il = oggi();
   salva(); renderFermo();
+}
+
+// ---------------------------------------------------------------- allenamento libero
+/* Per chi non segue una scheda fissa: si parte vuoti, si aggiungono gli esercizi man mano e alla fine la seduta va
+   nello storico come "Allenamento libero". Non cambia nessuna scheda e non genera progressioni; conta pero' nei
+   progressi per esercizio (lo storico li riconosce dal nome). La bozza resta sul telefono finche' non salvi. */
+const CHIAVE_LIBERO = "scheda-libero";
+const bozzaLibera = () => memo.get(CHIAVE_LIBERO);
+function nomiNoti() {
+  const n = new Set();
+  for (const s of D.schede) for (const sed of s.sedute) for (const e of sed.esercizi) n.add(e.nome);
+  for (const a of D.allenamenti) for (const e of a.esercizi) n.add(e.nome);
+  return [...n].sort((a, b) => a.localeCompare(b, "it"));
+}
+function esercizioNoto(nome) {
+  const k = nome.trim().toLowerCase();
+  for (const s of D.schede) for (const sed of s.sedute) for (const e of sed.esercizi) if (e.nome.toLowerCase() === k) return {nome: e.nome, tipo: e.tipo, recupero_sec: e.recupero_sec || 90};
+  for (const a of ordinati()) for (const e of a.esercizi) if (e.nome.toLowerCase() === k) return {nome: e.nome, tipo: e.tipo, recupero_sec: 90};
+  return null;
+}
+function avviaLibero() {
+  if (!bozzaLibera()) memo.set(CHIAVE_LIBERO, {data: oggi(), durata: "", rpe: "", peso: "", note: "", esercizi: [], iniziato: new Date().toISOString()});
+  S.libero = true; S.risultato = null; mostra("oggi");
+}
+function aggiornaPulsanteLibero() {
+  const b = $("avvia-libero"); if (!b) return;
+  const inCorso = !!bozzaLibera();
+  b.classList.toggle("attivo", inCorso && S.libero && S.vista === "oggi");
+  $("avvia-libero-testo").textContent = inCorso ? (S.libero && S.vista === "oggi" ? "Allenamento libero in corso" : "Riprendi allenamento libero") : "Avvia allenamento libero";
+}
+$("avvia-libero").onclick = avviaLibero;
+
+function vistaLibero(el) {
+  const b = bozzaLibera();
+  const salvaB = () => memo.set(CHIAVE_LIBERO, b);
+  const cosaDopoLibero = es => {
+    const i = es.righe.findIndex(r => !r.ok);
+    return i >= 0 ? `${es.nome} · serie ${i + 1}` : "Esercizio finito: aggiungine un altro o salva";
+  };
+  let h = `<div class="riga"><div><div class="eyebrow">Allenamento libero · ${esc(dataBella(b.data))}</div><h2>Scegli tu gli esercizi</h2></div></div>
+    <p class="sub">Aggiungi gli esercizi man mano. Alla fine salvi la seduta nello storico; le schede non cambiano.</p>`;
+  b.esercizi.forEach((es, k) => {
+    const conKg = conCarico(es.tipo), isoE = es.tipo === "isometria", u = ultimaVolta(null, es.nome);
+    h += `<article class="blocco">
+      <div class="es-testa"><h3>${esc(es.nome)}</h3><span style="display:flex;gap:6px;align-items:center"><span class="tipo">${TIPI[es.tipo] || ""}</span>
+        <button class="togli" type="button" data-togli="${k}" aria-label="Togli ${esc(es.nome)}">✕</button></span></div>
+      <div class="dett">recupero ${mmss(es.recupero_sec || 90)}</div>
+      ${u ? `<div class="ultima">Ultima volta (${esc(dataBreve(u.data))}): ${esc(fmtSerie(u.e))}</div>` : `<div class="ultima">Prima volta: scrivi quello che fai.</div>`}
+      <div class="serie ${conKg ? "" : "senza-kg"}">
+        <div></div><div class="h">${isoE ? "Secondi" : "Ripetizioni"}</div>${conKg ? `<div class="h">${es.tipo === "zavorrato" ? "Zavorra kg" : "Kg"}</div>` : ""}<div></div><div></div>
+        ${es.righe.map((r, i) => `
+          <div class="n">${i + 1}</div>
+          <input inputmode="decimal" data-l="${k}" data-i="${i}" data-k="val" value="${esc(r.val)}" placeholder="${esc(r.ph ?? "")}" aria-label="${isoE ? "Secondi" : "Ripetizioni"} serie ${i + 1}" class="${r.ok ? "fatta" : ""}">
+          ${conKg ? `<input inputmode="decimal" data-l="${k}" data-i="${i}" data-k="kg" value="${esc(r.kg)}" placeholder="kg" aria-label="Chili serie ${i + 1}" class="${r.ok ? "fatta" : ""}">` : ""}
+          <button type="button" class="orologio" data-lt="${k}" aria-label="Avvia il recupero">${ICONA_TIMER}</button>
+          <button type="button" class="spunta" data-ls="${k}" data-i="${i}" aria-pressed="${r.ok}" aria-label="Serie ${i + 1} fatta">✓</button>`).join("")}
+      </div>
+      <div class="piu-meno"><button type="button" data-piu="${k}">+ Serie</button>${es.righe.length > 1 ? `<button type="button" data-meno="${k}">− Serie</button>` : ""}</div>
+    </article>`;
+  });
+  h += `<div class="blocco pila aggiungi-es">
+      <h3>Aggiungi esercizio</h3>
+      <label class="campo">Nome<input id="l-nome" list="l-nomi" placeholder="es. Panca piana" autocomplete="off"></label>
+      <datalist id="l-nomi">${nomiNoti().map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>
+      <div class="campi">
+        <label>Tipo<select id="l-tipo">${Object.entries(TIPI).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+        <label>Recupero (secondi)<input id="l-rec" inputmode="numeric" value="90"></label>
+      </div>
+      <button class="pulsante" type="button" id="l-aggiungi">Aggiungi</button>
+    </div>
+    <div class="blocco pila">
+      <div class="campi">
+        <label>Data<input type="date" id="l-data" value="${esc(b.data)}"></label>
+        <label>Durata (minuti)<input inputmode="numeric" id="l-durata" value="${esc(b.durata)}" placeholder="60"></label>
+        <label>Fatica (1-10)<input inputmode="decimal" id="l-rpe" value="${esc(b.rpe)}" placeholder="8"></label>
+        <label>Peso corporeo (kg)<input inputmode="decimal" id="l-peso" value="${esc(b.peso)}" placeholder="facoltativo"></label>
+        <label class="largo">Note<textarea id="l-note" placeholder="Cosa hai allenato, sensazioni">${esc(b.note)}</textarea></label>
+      </div>
+      <button class="pulsante pieno" type="button" id="l-salva">Salva allenamento</button>
+      <button class="pulsante secondario pieno" type="button" id="l-annulla">Annulla allenamento</button>
+    </div>`;
+  el.innerHTML = h;
+
+  // un nome gia' usato propone tipo e recupero
+  $("l-nome").addEventListener("input", () => { const n = esercizioNoto($("l-nome").value); if (n) { $("l-tipo").value = n.tipo; $("l-rec").value = n.recupero_sec; } });
+  $("l-aggiungi").onclick = () => {
+    const testo = $("l-nome").value.trim(); if (!testo) return avvisa("Scrivi il nome dell'esercizio.");
+    const noto = esercizioNoto(testo), nome = noto ? noto.nome : testo, tipo = $("l-tipo").value;
+    const u = ultimaVolta(null, nome), quante = u ? u.e.serie.length : 3;
+    const righe = Array.from({length: quante}, (_, i) => { const p = u && u.e.serie[i];
+      return {val: "", kg: conCarico(tipo) && p && p.kg != null ? fmt(p.kg) : "", ph: p ? (tipo === "isometria" ? p.sec : p.rip) : "", ok: false}; });
+    b.esercizi.push({id: uid(), nome, tipo, recupero_sec: Math.round(num($("l-rec").value) || 90), righe});
+    salvaB(); renderFermo();
+  };
+  el.querySelectorAll("input[data-l]").forEach(inp => inp.addEventListener("input", () => {
+    b.esercizi[+inp.dataset.l].righe[+inp.dataset.i][inp.dataset.k] = inp.value; salvaB();
+  }));
+  el.querySelectorAll("[data-ls]").forEach(btn => btn.onclick = () => {
+    const es = b.esercizi[+btn.dataset.ls], r = es.righe[+btn.dataset.i];
+    r.ok = !r.ok; if (r.ok && (r.val === "" || r.val == null)) r.val = String(r.ph ?? "");
+    salvaB(); renderFermo();
+    if (r.ok) avviaTimer(es.recupero_sec || 90, cosaDopoLibero(es));
+  });
+  el.querySelectorAll("[data-lt]").forEach(btn => btn.onclick = () => { const es = b.esercizi[+btn.dataset.lt]; avviaTimer(es.recupero_sec || 90, `${es.nome} · recupero`); });
+  el.querySelectorAll("[data-piu]").forEach(btn => btn.onclick = () => {
+    const es = b.esercizi[+btn.dataset.piu], ult = es.righe[es.righe.length - 1];
+    es.righe.push({val: "", kg: ult ? ult.kg : "", ph: ult ? (ult.val || ult.ph) : "", ok: false}); salvaB(); renderFermo();
+  });
+  el.querySelectorAll("[data-meno]").forEach(btn => btn.onclick = () => { b.esercizi[+btn.dataset.meno].righe.pop(); salvaB(); renderFermo(); });
+  el.querySelectorAll("[data-togli]").forEach(btn => btn.onclick = () => {
+    const es = b.esercizi[+btn.dataset.togli];
+    if (es.righe.some(r => r.ok) && !confirm(`Togliere ${es.nome} e le serie segnate?`)) return;
+    b.esercizi.splice(+btn.dataset.togli, 1); salvaB(); renderFermo();
+  });
+  for (const [id, k] of [["l-data", "data"], ["l-durata", "durata"], ["l-rpe", "rpe"], ["l-peso", "peso"], ["l-note", "note"]])
+    $(id).addEventListener("input", ev => { b[k] = ev.target.value; salvaB(); });
+  $("l-annulla").onclick = () => {
+    if (b.esercizi.some(es => es.righe.some(r => r.ok)) && !confirm("Annullare l'allenamento? Le serie segnate andranno perse.")) return;
+    memo.del(CHIAVE_LIBERO); S.libero = false; render(); aggiornaPulsanteLibero(); window.scrollTo(0, 0);
+  };
+  $("l-salva").onclick = () => {
+    const esercizi = b.esercizi.map(es => ({id: es.id, nome: es.nome, tipo: es.tipo, variante: null,
+      serie: es.righe.filter(r => r.ok && num(r.val) != null).map(r => es.tipo === "isometria" ? {sec: num(r.val)}
+        : {rip: Math.round(num(r.val)), ...(conCarico(es.tipo) && num(r.kg) != null ? {kg: num(r.kg)} : {})})})).filter(es => es.serie.length);
+    if (!esercizi.length) return avvisa("Segna almeno una serie con ✓ prima di salvare.");
+    const a = {id: uid(), data: b.data || oggi(), scheda_id: null, seduta_id: "libero", nome_seduta: "Allenamento libero", libero: true, esercizi,
+      durata_min: num(b.durata), rpe: num(b.rpe), peso: num(b.peso), note: b.note || "", creato_il: new Date().toISOString()};
+    D.allenamenti.push(a); if (a.peso) D.pesate.push({data: a.data, kg: a.peso});
+    salva(); memo.del(CHIAVE_LIBERO); S.libero = false;
+    S.liberoSalvato = `${esercizi.length} ${esercizi.length === 1 ? "esercizio" : "esercizi"}, ${esercizi.reduce((n, e) => n + e.serie.length, 0)} serie`;
+    render(); aggiornaPulsanteLibero(); window.scrollTo(0, 0);
+  };
 }
 
 // ---------------------------------------------------------------- vista SCHEDE
@@ -811,24 +946,50 @@ function vistaRaccolta(el, r) {
   };
 }
 
+// ---------------------------------------------------------------- progressi per esercizio
+/* Ogni esercizio e' riconosciuto dal nome, in qualunque seduta o giorno l'hai fatto (scheda o allenamento libero).
+   Per ogni settimana conta il valore migliore: carico o zavorra piu' alti, altrimenti secondi o ripetizioni. */
+function settimaneEsercizio(nome, lista) {
+  const usi = [];
+  for (const a of lista) { const e = a.esercizi.find(x => x.nome === nome); if (e && e.serie.length) usi.push({data: a.data, e}); }
+  usi.reverse();
+  const tipo = usi[usi.length - 1].e.tipo, carico = conCarico(tipo) && usi.some(x => caricoMax(x.e) > 0);
+  const per = new Map();
+  for (const x of usi) { const k = iso(lunedi(daIso(x.data))), v = carico ? caricoMax(x.e) : migliore(x.e); per.set(k, Math.max(per.get(k) ?? -Infinity, v)); }
+  return {tipo, carico, ultimaData: usi[usi.length - 1].data, settimane: [...per].sort((a, b) => a[0].localeCompare(b[0])).map(([data, y]) => ({data, y}))};
+}
+function bloccoEsercizi(lista) {
+  const nomi = [...new Set(lista.flatMap(a => a.esercizi.filter(e => e.serie.length).map(e => e.nome)))];
+  if (!nomi.length) return "";
+  const aperti = new Set(memo.get("scheda-es-aperti") || []);
+  const dati = nomi.map(n => ({nome: n, ...settimaneEsercizio(n, lista)})).sort((a, b) => b.ultimaData.localeCompare(a.ultimaData));
+  return `<div class="blocco"><h3>Esercizi</h3>
+    <p class="sub" style="margin:4px 0 6px">Ogni esercizio, qualunque giorno o seduta tu l'abbia fatto. Il valore è il migliore della settimana; tocca per il grafico.</p>
+    ${dati.map(d => {
+      const s = d.settimane, ora = s[s.length - 1], prima = s[s.length - 2];
+      const u = d.tipo === "isometria" ? "s" : d.carico ? "kg" : "rip", diff = prima ? ora.y - prima.y : null;
+      const cls = diff == null || Math.abs(diff) < 0.001 ? "" : diff > 0 ? "su" : "giu";
+      return `<details class="esercizio-storico" data-nome="${esc(d.nome)}" ${aperti.has(d.nome) ? "open" : ""}><summary>
+          <span><b>${esc(d.nome)}</b><span class="sub" style="display:block">${d.tipo === "zavorrato" && d.carico ? "zavorra " : ""}${fmt(ora.y)} ${u} · settimana del ${esc(dataBreve(ora.data))}</span></span>
+          <span class="variazione ${cls}">${diff == null ? "prima settimana" : `${segno(diff, 2)} ${u} vs sett. prima`}</span></summary>
+        ${s.length > 1 ? `<div class="grafico" style="margin-top:6px">${grafico(s, u, 190)}</div>` : `<p class="sub" style="margin-top:6px">Serve almeno un'altra settimana per vedere l'andamento.</p>`}
+      </details>`;
+    }).join("")}</div>`;
+}
+
 function vistaStorico() {
   const el = $("v-storico");
   if (S.raccolta) { const r = (D.raccolte || []).find(x => x.id === S.raccolta); if (r) return vistaRaccolta(el, r); S.raccolta = null; }
   const lista = ordinati();
   if (!lista.length) { el.innerHTML = bloccoPeso() + `<div class="blocco"><p class="vuoto">Nessuna seduta salvata. Dalla sezione Oggi segna le serie con ✓ e premi “Salva seduta”.</p></div>`; collegaPeso(); return; }
-  const nomi = [...new Set(lista.flatMap(a => a.esercizi.map(e => e.nome)))].sort((a, b) => a.localeCompare(b, "it"));
-  const scelto = nomi.includes(S.esStorico) ? S.esStorico : nomi[0];
-  const punti = lista.slice().reverse().map(a => { const e = a.esercizi.find(x => x.nome === scelto); return e ? {data: a.data, y: indicatore(e), variante: e.variante, tipo: e.tipo} : null; }).filter(p => p && p.y > 0);
-  const tipo = punti[0] ? punti[0].tipo : "pesi";
   const quattro = iso(piuGiorni(new Date(), -28));
   const recenti = lista.filter(a => a.data >= quattro).length;
   el.innerHTML = `<div class="blocco"><div class="campi">
       <div><div class="eyebrow">Sedute salvate</div><div class="target">${lista.length}</div></div>
       <div><div class="eyebrow">Ultime 4 settimane</div><div class="target">${recenti}</div><div class="sub">${fmt(Math.round(recenti / 4 * 10) / 10)} a settimana</div></div></div></div>
+    ${bloccoEsercizi(lista)}
     ${bloccoRaccolte()}
     ${bloccoAumento(lista.slice().reverse(), "Aumento dei carichi da sempre")}
-    <div class="blocco"><div class="riga"><h3>Andamento</h3><select id="es-storico" aria-label="Esercizio">${nomi.map(n => `<option ${n === scelto ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>
-      <div class="sub" style="margin:4px 0 6px">${esc(UNITA[tipo] || "")}</div><div class="grafico">${grafico(punti, UNITA[tipo] || "")}</div></div>
     ${bloccoPeso()}
     <div class="blocco"><h3 style="margin-bottom:4px">Diario</h3>${lista.slice(0, 60).map(a => `
       <details class="sessione"><summary><span><b>${esc(a.nome_seduta)}</b> · ${esc(dataBella(a.data))}</span>
@@ -838,7 +999,10 @@ function vistaStorico() {
         <button type="button" class="pulsante pericolo piccolo" data-elimina="${esc(a.id)}" style="margin-top:8px">Elimina seduta</button>
       </details>`).join("")}</div>`;
   collegaPeso(); collegaRaccolte();
-  $("es-storico").onchange = ev => { S.esStorico = ev.target.value; memo.set("scheda-es", S.esStorico); render(); };
+  // ricorda quali esercizi hai aperto
+  el.querySelectorAll("details.esercizio-storico").forEach(d => d.addEventListener("toggle", () => {
+    const aperti = new Set(memo.get("scheda-es-aperti") || []); d.open ? aperti.add(d.dataset.nome) : aperti.delete(d.dataset.nome); memo.set("scheda-es-aperti", [...aperti]);
+  }));
   el.querySelectorAll("[data-elimina]").forEach(b => b.onclick = () => {
     if (!confirm("Eliminare questa seduta dallo storico? Le progressioni già applicate restano.")) return;
     const a = D.allenamenti.find(x => x.id === b.dataset.elimina);
@@ -960,6 +1124,8 @@ const GUIDE = {
     {titolo: "Salva e progredisci", testo: `<p>A fine allenamento compila durata e fatica (facoltativi) e tocca <b>Salva seduta</b>.</p>
       <p>L'app ti dice com'è andata e ti propone le <b>progressioni</b>: più carico, la variante successiva o un obiettivo più alto. Puoi applicarle, scrivere un carico tuo o lasciare com'è.</p>
       <p>Se esci a metà seduta, le serie segnate restano salvate.</p>`},
+    {titolo: "Allenamento libero", testo: `<p>Non segui una scheda fissa? Tocca <b>Avvia allenamento libero</b> in alto: parti vuoto, aggiungi gli esercizi man mano e alla fine salvi la seduta nello storico.</p>
+      <p>Le schede non cambiano, ma i progressi di ogni esercizio li vedi comunque in <b>Storico → Esercizi</b>, settimana per settimana.</p>`},
   ],
   schede: () => [
     {titolo: "Le tue schede", testo: `<p>Una scheda è il tuo programma: contiene una o più <b>sedute</b> (per esempio A, B, C) che si alternano in ordine.</p>
@@ -974,7 +1140,7 @@ const GUIDE = {
   ],
   storico: () => [
     {titolo: "Storico e progressi", testo: `<ul><li><b>Schede</b>: salva gli allenamenti che stai usando (per esempio A, B, C) con un nome come "Aprile 2026": dentro c'è un grafico per ogni esercizio con l'aumento del carico, più quanto sono saliti i carichi in totale.</li>
-      <li><b>Andamento</b>: scegli un esercizio e vedi come cresce (massimale stimato, zavorra, secondi o ripetizioni).</li>
+      <li><b>Esercizi</b>: ogni esercizio con il migliore della settimana e il confronto con la settimana prima, qualunque giorno tu l'abbia fatto. Tocca per il grafico.</li>
       <li><b>Peso corporeo</b>: si aggiorna con il peso che scrivi nelle sedute o in Altro.</li>
       <li><b>Diario</b>: tocca una seduta per vedere le serie fatte o eliminarla.</li></ul>`},
   ],
@@ -1017,8 +1183,9 @@ function apriGuida(nome, pagina = 0) {
 const VISTE = {oggi: vistaOggi, schede: vistaSchede, storico: vistaStorico, altro: vistaAltro};
 function render() {
   const sch = schedaAttiva();
-  $("sottotitolo").textContent = S.vista === "oggi" && sch ? sch.nome : "";
+  $("sottotitolo").textContent = S.vista === "oggi" && S.libero ? "Allenamento libero" : S.vista === "oggi" && sch ? sch.nome : "";
   VISTE[S.vista]();
+  aggiornaPulsanteLibero();
 }
 document.addEventListener("click", ev => { const b = ev.target.closest("[data-guida]"); if (b) apriGuida(b.dataset.guida); });
 function renderFermo() { const y = window.scrollY; render(); window.scrollTo(0, y); }
@@ -1038,6 +1205,7 @@ document.querySelectorAll("nav.barra button").forEach(b => b.onclick = () => {
   if (b.dataset.v === "storico" && S.vista === "storico") S.raccolta = null;   // un secondo tocco torna all'elenco
   mostra(b.dataset.v);
 });
+if (bozzaLibera()) S.libero = true;   // un allenamento libero lasciato a meta' riparte da dov'era
 mostra(S.vista);
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1"))

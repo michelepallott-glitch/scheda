@@ -251,7 +251,7 @@ function vistaOggi() {
     h += `<article class="blocco">
       <div class="es-testa"><h3>${esc(e.nome)}</h3><span class="tipo">${TIPI[e.tipo] || ""}</span></div>
       <div class="target">${esc(obiettivo(e))}${e.variante ? ` · <span class="var">${esc(e.variante)}</span>` : ""}</div>
-      <div class="dett">RIR ${e.rir ?? 2} · recupero ${mmss(e.recupero_sec || 90)}</div>
+      <div class="dett">RIR ${e.rir ?? 2} · recupero ${mmss(e.recupero_sec || 90)}${sch.recupero_cambio ? ` · poi ${mmss(sch.recupero_cambio)} per cambiare esercizio` : ""}</div>
       ${u ? `<div class="ultima">Ultima volta (${esc(dataBreve(u.data))}): ${esc(fmtSerie(u.e))}</div>` : ""}
       ${e.note ? `<div class="nota">${esc(e.note)}</div>` : ""}
       <div class="serie ${conKg ? "" : "senza-kg"}">
@@ -289,11 +289,14 @@ function vistaOggi() {
     s.ok = !s.ok;
     if (s.ok && (s.val === "" || s.val == null)) s.val = String(s.ph ?? "");
     memo.set(chiaveBozza(sed.id), b); renderFermo();
-    if (s.ok) avviaTimer(e.recupero_sec || 90, cosaDopo(sed, e, b));   // ogni serie segnata fa partire il recupero
+    // ogni serie segnata fa partire il recupero; finito l'esercizio vale il recupero di cambio esercizio
+    if (s.ok) { const fine = b.es[e.id].every(x => x.ok);
+      avviaTimer(fine && sch.recupero_cambio ? sch.recupero_cambio : e.recupero_sec || 90, (fine && sch.recupero_cambio ? "Cambio esercizio · " : "") + cosaDopo(sed, e, b)); }
   });
   el.querySelectorAll(".orologio").forEach(btn => btn.onclick = () => {
-    const e = sed.esercizi.find(x => x.id === btn.dataset.es);
-    avviaTimer(e.recupero_sec || 90, `${e.nome} · recupero dopo la serie ${+btn.dataset.i + 1}`);
+    const e = sed.esercizi.find(x => x.id === btn.dataset.es), i = +btn.dataset.i;
+    const ultima = i === b.es[e.id].length - 1 && sch.recupero_cambio;
+    avviaTimer(ultima ? sch.recupero_cambio : e.recupero_sec || 90, ultima ? `${e.nome} · cambio esercizio` : `${e.nome} · recupero dopo la serie ${i + 1}`);
   });
   el.querySelectorAll("[data-modifica]").forEach(btn => btn.onclick = () => dialogoEsercizio(sch, sed, sed.esercizi.find(x => x.id === btn.dataset.modifica)));
   $("svuota").onclick = () => { if (confirm("Cancellare le serie segnate in questa seduta?")) { memo.del(chiaveBozza(sed.id)); render(); } };
@@ -437,6 +440,9 @@ function editorScheda(el, sch) {
   el.innerHTML = `<button class="link" type="button" id="indietro">‹ Tutte le schede</button>
     <div class="blocco pila">
       <label class="campo">Nome della scheda<input id="s-nome" value="${esc(sch.nome)}"></label>
+      <label class="campo">Recupero dopo l'ultima serie di ogni esercizio (secondi)
+        <input id="s-cambio" inputmode="numeric" value="${esc(sch.recupero_cambio ?? "")}" placeholder="vuoto = come le altre serie">
+        <span class="sub">È il tempo per passare all'esercizio successivo, per esempio 120 = 2 minuti.</span></label>
       <div><div class="eyebrow" style="margin-bottom:6px">Giorni di allenamento (facoltativo)</div>
         <div>${caselle(0)}</div>
         <div class="sub" style="margin:8px 0 4px">Settimana alternata (lascia vuoto se ogni settimana è uguale)</div><div>${caselle(1)}</div></div>
@@ -455,6 +461,11 @@ function editorScheda(el, sch) {
     <button class="pulsante pericolo" type="button" id="elimina-scheda">Elimina scheda</button>`;
   $("indietro").onclick = () => { S.modifica = null; render(); };
   $("s-nome").onchange = ev => { sch.nome = ev.target.value.trim() || "Scheda"; salva(); };
+  $("s-cambio").onchange = ev => {
+    const v = num(ev.target.value);
+    if (v != null && (v < 10 || v > 900)) { avvisa("Scrivi un tempo tra 10 e 900 secondi, oppure lascia vuoto."); ev.target.value = sch.recupero_cambio ?? ""; return; }
+    sch.recupero_cambio = v == null ? null : Math.round(v); salva(); avvisa(v == null ? "Recupero di cambio esercizio tolto." : `Cambio esercizio: ${mmss(Math.round(v))}.`);
+  };
   el.querySelectorAll("[data-sett]").forEach(c => c.onchange = () => {
     const g = [0, 1].map(k => [...el.querySelectorAll(`[data-sett="${k}"]:checked`)].map(x => +x.value));
     sch.giorni = g[1].length ? g : g[0].length ? [g[0]] : [];
@@ -550,7 +561,7 @@ function dialogoEsercizio(sch, sed, e) {
 function creaEsempio() {
   const es = (nome, tipo, serie, min, max, extra = {}) => ({id: uid(), nome, tipo, serie, min, max, rir: 2, carico: null, incremento: tipo === "pesi" ? 2.5 : tipo === "zavorrato" ? 1.25 : 0,
     recupero_sec: 90, varianti: [], variante: null, note: "", fallimenti: 0, ...extra});
-  const s = {id: uid(), nome: "Esempio: full body 3 giorni", inizio: iso(lunedi(new Date())), giorni: [[1, 3, 5]], creato_il: new Date().toISOString(), sedute: [
+  const s = {id: uid(), nome: "Esempio: full body 3 giorni", inizio: iso(lunedi(new Date())), giorni: [[1, 3, 5]], recupero_cambio: 120, creato_il: new Date().toISOString(), sedute: [
     {id: uid(), nome: "A · Spinta", esercizi: [
       es("Panca piana", "pesi", 4, 6, 8, {recupero_sec: 150}), es("Dip", "zavorrato", 3, 6, 10, {carico: 0, recupero_sec: 120}),
       es("Leg press", "pesi", 3, 8, 12, {incremento: 10, recupero_sec: 120}), es("Alzate laterali", "pesi", 3, 10, 15, {incremento: 1, recupero_sec: 60}),
@@ -839,7 +850,7 @@ const GUIDE = {
     {titolo: "Oggi: la seduta da fare", testo: `<p>Qui trovi la prossima seduta della scheda in uso. Per ogni esercizio vedi l'obiettivo (serie × ripetizioni o secondi, carico, recupero) e cosa hai fatto l'ultima volta.</p>
       <p>Dal menu in alto a destra puoi scegliere un'altra seduta.</p>`},
     {titolo: "Segnare le serie", testo: `<ol><li>Scrivi ripetizioni (o secondi) e kg. Se lasci vuoto vale il numero in grigio.</li>
-      <li>Tocca ${ICONA.spunta} quando hai finito la serie: parte subito il <b>recupero</b>.</li>
+      <li>Tocca ${ICONA.spunta} quando hai finito la serie: parte subito il <b>recupero</b>. Dopo l'ultima serie di un esercizio parte il recupero di <b>cambio esercizio</b>, se l'hai impostato nella scheda.</li>
       <li>Tocca ${ICONA.timer} per far ripartire il recupero di quella serie.</li>
       <li>Nella barra del timer: <b>+15 s</b> per allungarlo, <b>Chiudi</b> per toglierlo. Alla fine suona.</li></ol>`},
     {titolo: "Salva e progredisci", testo: `<p>A fine allenamento compila durata e fatica (facoltativi) e tocca <b>Salva seduta</b>.</p>
@@ -854,6 +865,7 @@ const GUIDE = {
       <li><b>Corpo libero</b>: ripetizioni, con varianti dalla più facile alla più difficile.</li><li><b>Tenuta</b>: secondi, per esempio planche o front lever.</li></ul>
       <p>Se non sai il carico lascialo vuoto: lo prende dalla prima seduta.</p>`},
     {titolo: "Ordine e giorni", testo: `<p>Con ↑ ↓ cambi l'ordine di sedute ed esercizi, con ✎ modifichi un esercizio.</p>
+      <p>In cima alla scheda puoi impostare il <b>recupero dopo l'ultima serie</b> di ogni esercizio, cioè il tempo per passare all'esercizio successivo.</p>
       <p>Se segni i <b>giorni di allenamento</b>, Oggi ti mostra le prossime date. Puoi anche alternare due settimane diverse, per esempio lun-mer-ven e mar-gio-sab.</p>`},
   ],
   storico: () => [

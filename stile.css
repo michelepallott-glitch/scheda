@@ -116,6 +116,13 @@ details.sessione summary::-webkit-details-marker { display: none; }
 .vuoto { color: var(--muted); font-style: italic; }
 .mini { display: flex; gap: 4px; }
 .mini button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 10px; width: 36px; height: 34px; cursor: pointer; color: var(--ink-2); }
+/* schede dello storico */
+.voce { width: 100%; text-align: left; background: var(--bg); border: 0; border-radius: 14px; padding: 12px 14px; display: flex;
+  justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; color: var(--ink); font: inherit; }
+.voce b { font: italic 700 18px/1.2 var(--display); }
+.voce .freccia { font: 800 26px/1 var(--display); color: var(--arancio); }
+.esercizio-raccolta { border-top: 1px solid var(--line); padding-top: 10px; }
+.esercizio-raccolta .riga { align-items: baseline; }
 .proposta { background: var(--arancio-soft); border-radius: 14px; padding: 12px; margin-bottom: 8px; border-bottom: 0 !important; }
 .proposta .controlli { margin-top: 8px; }
 .proposta input { width: 110px; }

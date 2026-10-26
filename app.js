@@ -710,15 +710,18 @@ function collegaPeso() {
     D.pesate = [...D.pesate.filter(p => p.data !== oggi()), {data: oggi(), kg}]; salva(); avvisa("Peso salvato."); renderFermo();
   };
 }
-// ---------------------------------------------------------------- schede dello storico (raccolte per periodo)
-// Una raccolta e' un periodo (es. "Aprile 2026") di una scheda: dentro, per ogni seduta (A, B, C...) i grafici del
-// carico o della zavorra usati, e in fondo quanto sono saliti i carichi nel complesso.
+// ---------------------------------------------------------------- schede dello storico (raccolte)
 const conCarico = t => t === "pesi" || t === "zavorrato";
 const caricoMax = e => Math.max(0, ...(e.serie || []).map(s => s.kg || 0));
 const migliore = e => Math.max(0, ...(e.serie || []).map(s => (e.tipo === "isometria" ? s.sec : s.rip) || 0));
 const MESI_LUNGHI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+// Una raccolta contiene gli allenamenti della scheda in uso (es. A, B, C) nel momento in cui la crei: dentro trovi,
+// per ogni allenamento, un grafico per ogni esercizio (carico o zavorra; secondi o ripetizioni per le tenute e il
+// corpo libero) e in fondo quanto sono saliti i carichi nel complesso.
 function sessioniRaccolta(r) {
-  return ordinati().filter(a => a.data >= r.dal && a.data <= r.al && (!r.scheda_id || a.scheda_id === r.scheda_id)).reverse();
+  const ids = r.sedute ? r.sedute.map(s => s.id) : null;
+  return ordinati().filter(a => (!r.scheda_id || a.scheda_id === r.scheda_id) && (!ids || ids.includes(a.seduta_id))
+    && (!r.dal || a.data >= r.dal) && (!r.al || a.data <= r.al)).reverse();
 }
 // "kg aggiunti": per ogni esercizio con carico, l'ultimo carico piu' alto usato meno il primo; poi la somma
 function puntiAumento(sessioni) {
@@ -737,72 +740,69 @@ function puntiAumento(sessioni) {
 function bloccoAumento(sessioni, titolo) {
   const punti = puntiAumento(sessioni);
   if (!punti.length) return "";
-  return `<div class="blocco"><div class="eyebrow">${titolo}</div><div class="target">${segno(punti[punti.length - 1].y)} kg</div>
+  return `<div class="blocco"><div class="eyebrow">${titolo}</div><div class="target">${segno(punti[punti.length - 1].y, 2)} kg</div>
     <div class="sub">Somma di quanto è salito il carico più alto di ogni esercizio con pesi o zavorra, rispetto alla prima seduta.</div>
     <div class="grafico" style="margin-top:6px">${grafico(punti, "kg aggiunti")}</div></div>`;
 }
 function bloccoRaccolte() {
-  const raccolte = D.raccolte || [], oggiD = new Date();
-  const primoMese = iso(new Date(oggiD.getFullYear(), oggiD.getMonth(), 1)), fineMese = iso(new Date(oggiD.getFullYear(), oggiD.getMonth() + 1, 0));
+  const raccolte = D.raccolte || [], sch = schedaAttiva(), oggiD = new Date();
   const nomeMese = MESI_LUNGHI[oggiD.getMonth()].replace(/^./, c => c.toUpperCase()) + " " + oggiD.getFullYear();
-  return `<div class="blocco pila"><div class="riga"><h3>Schede</h3><button class="pulsante piccolo" type="button" id="r-nuova">Nuova</button></div>
-    <p class="sub">Raggruppa un periodo di allenamenti, per esempio un mese, e guarda i progressi di ogni seduta.</p>
-    <div id="r-form" class="pila" hidden>
-      <div class="campi">
-        <label class="largo">Nome<input id="r-nome" value="${esc(nomeMese)}"></label>
-        <label>Dal<input type="date" id="r-dal" value="${primoMese}"></label>
-        <label>Al<input type="date" id="r-al" value="${fineMese}"></label>
-        <label class="largo">Scheda<select id="r-scheda">${D.schede.map(s => `<option value="${esc(s.id)}" ${s.id === D.attiva ? "selected" : ""}>${esc(s.nome)}</option>`).join("")}<option value="">Tutte le schede</option></select></label>
-      </div>
+  return `<div class="blocco pila"><div class="riga"><h3>Schede</h3>${sch && sch.sedute.length ? `<button class="pulsante piccolo" type="button" id="r-nuova">Nuova</button>` : ""}</div>
+    <p class="sub">Salva gli allenamenti che stai usando ora e guarda, esercizio per esercizio, come salgono i carichi.</p>
+    ${sch ? `<div id="r-form" class="pila" hidden>
+      <label class="campo">Nome<input id="r-nome" value="${esc(nomeMese)}"></label>
+      <div><div class="eyebrow" style="margin-bottom:6px">Allenamenti di "${esc(sch.nome)}" da includere</div>
+        ${sch.sedute.map(s => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" data-r-seduta="${esc(s.id)}" checked> ${esc(s.nome)} <span class="sub">· ${s.esercizi.length} esercizi</span></label>`).join("")}</div>
       <div class="controlli"><button class="pulsante piccolo" type="button" id="r-salva">Crea</button><button class="pulsante secondario piccolo" type="button" id="r-annulla">Annulla</button></div>
-    </div>
-    ${raccolte.length ? `<div class="pila" style="gap:8px">${[...raccolte].sort((a, b) => b.dal.localeCompare(a.dal)).map(r => `
-      <button class="voce" type="button" data-raccolta="${esc(r.id)}"><span><b>${esc(r.nome)}</b><span class="sub" style="display:block">${esc(dataBreve(r.dal))} – ${esc(dataBreve(r.al))} · ${sessioniRaccolta(r).length} sedute</span></span><span class="freccia">›</span></button>`).join("")}</div>`
+    </div>` : ""}
+    ${raccolte.length ? `<div class="pila" style="gap:8px">${[...raccolte].reverse().map(r => `
+      <button class="voce" type="button" data-raccolta="${esc(r.id)}"><span><b>${esc(r.nome)}</b><span class="sub" style="display:block">${r.sedute ? esc(r.sedute.map(s => s.nome).join(", ")) : `${esc(dataBreve(r.dal))} – ${esc(dataBreve(r.al))}`} · ${sessioniRaccolta(r).length} sedute</span></span><span class="freccia">›</span></button>`).join("")}</div>`
     : `<p class="vuoto">Nessuna scheda ancora: tocca Nuova.</p>`}
   </div>`;
 }
 function collegaRaccolte() {
+  document.querySelectorAll("[data-raccolta]").forEach(b => b.onclick = () => { S.raccolta = b.dataset.raccolta; render(); window.scrollTo(0, 0); });
   if (!$("r-nuova")) return;
   $("r-nuova").onclick = () => { $("r-form").hidden = false; $("r-nome").focus(); };
   $("r-annulla").onclick = () => { $("r-form").hidden = true; };
   $("r-salva").onclick = () => {
-    const nome = $("r-nome").value.trim(), dal = $("r-dal").value, al = $("r-al").value;
+    const sch = schedaAttiva(), nome = $("r-nome").value.trim();
+    const scelte = [...document.querySelectorAll("[data-r-seduta]:checked")].map(c => c.dataset.rSeduta);
     if (!nome) return avvisa("Dai un nome alla scheda, per esempio Aprile 2026.");
-    if (!dal || !al || al < dal) return avvisa("Controlla le date: la fine deve venire dopo l'inizio.");
-    const r = {id: uid(), nome, dal, al, scheda_id: $("r-scheda").value || null, creato_il: new Date().toISOString()};
+    if (!scelte.length) return avvisa("Scegli almeno un allenamento.");
+    const sedute = sch.sedute.filter(s => scelte.includes(s.id)).map(s => ({id: s.id, nome: s.nome, esercizi: s.esercizi.map(e => ({nome: e.nome, tipo: e.tipo}))}));
+    const r = {id: uid(), nome, scheda_id: sch.id, sedute, creato_il: new Date().toISOString()};
     D.raccolte = [...(D.raccolte || []), r]; salva(); S.raccolta = r.id; render(); window.scrollTo(0, 0);
   };
-  document.querySelectorAll("[data-raccolta]").forEach(b => b.onclick = () => { S.raccolta = b.dataset.raccolta; render(); window.scrollTo(0, 0); });
+}
+// grafico di un esercizio: carico/zavorra per pesi e zavorrati, secondi o ripetizioni migliori per gli altri
+function cartaEsercizio(nome, tipo, usi) {
+  const carico = conCarico(tipo), u = tipo === "isometria" ? "s" : carico ? "kg" : "rip";
+  if (!usi.length) return `<div class="esercizio-raccolta"><div class="riga"><b>${esc(nome)}</b><span class="sub">ancora nessuna seduta</span></div></div>`;
+  const punti = usi.map(x => ({data: x.data, y: carico ? caricoMax(x.e) : migliore(x.e), variante: x.e.variante}));
+  const da = punti[0].y, a = punti[punti.length - 1].y, vA = usi[usi.length - 1].e.variante;
+  return `<div class="esercizio-raccolta"><div class="riga"><b>${esc(nome)}</b><span class="dett">${tipo === "zavorrato" ? "zavorra " : ""}${fmt(da)} → ${fmt(a)} ${u}
+      <b style="color:${a > da ? "var(--verde)" : a < da ? "var(--arancio)" : "var(--muted)"}">${segno(a - da, 2)}</b></span></div>
+    ${vA && !carico ? `<div class="sub">${esc(vA)}</div>` : ""}
+    ${punti.length > 1 ? `<div class="grafico">${grafico(punti, u, 190)}</div>` : `<p class="sub">Una sola seduta finora.</p>`}</div>`;
 }
 function vistaRaccolta(el, r) {
   const sess = sessioniRaccolta(r);
   const sch = D.schede.find(s => s.id === r.scheda_id);
-  const gruppi = new Map();
-  for (const a of sess) { const g = gruppi.get(a.seduta_id) || {nome: a.nome_seduta, sessioni: []}; g.nome = a.nome_seduta; g.sessioni.push(a); gruppi.set(a.seduta_id, g); }
-  const ordine = sch ? sch.sedute.map(s => s.id) : [];
-  const chiavi = [...gruppi.keys()].sort((a, b) => ((ordine.indexOf(a) + 1) || 99) - ((ordine.indexOf(b) + 1) || 99));
-  const cartaSeduta = k => {
-    const g = gruppi.get(k), nomi = [...new Set(g.sessioni.flatMap(a => a.esercizi.map(e => e.nome)))];
-    const righe = nomi.map(n => {
-      const usi = g.sessioni.map(a => ({data: a.data, e: a.esercizi.find(e => e.nome === n)})).filter(x => x.e);
-      const tipo = usi[0].e.tipo;
-      if (conCarico(tipo)) {
-        const punti = usi.map(x => ({data: x.data, y: caricoMax(x.e)}));
-        const da = punti[0].y, a = punti[punti.length - 1].y;
-        return `<div class="esercizio-raccolta"><div class="riga"><b>${esc(n)}</b><span class="dett">${tipo === "zavorrato" ? "zavorra " : ""}${fmt(da)} → ${fmt(a)} kg <b style="color:${a > da ? "var(--verde)" : a < da ? "var(--arancio)" : "var(--muted)"}">${segno(a - da, 2)}</b></span></div>
-          ${punti.length > 1 ? `<div class="grafico">${grafico(punti, "kg", 190)}</div>` : `<p class="sub">Una sola seduta nel periodo.</p>`}</div>`;
-      }
-      const u = tipo === "isometria" ? "s" : "rip", da = migliore(usi[0].e), a = migliore(usi[usi.length - 1].e);
-      const vDa = usi[0].e.variante, vA = usi[usi.length - 1].e.variante;
-      return `<div class="esercizio-raccolta"><div class="riga"><b>${esc(n)}</b><span class="dett">${fmt(da)} → ${fmt(a)} ${u}${vA && vA !== vDa ? ` · ora ${esc(vA)}` : ""}</span></div></div>`;
-    }).join("");
-    return `<div class="blocco pila"><div class="riga"><h3>${esc(g.nome)}</h3><span class="chip">${g.sessioni.length} ${g.sessioni.length === 1 ? "seduta" : "sedute"}</span></div>${righe}</div>`;
+  // allenamenti: quelli salvati nella raccolta, oppure (raccolte per periodo) quelli trovati nelle sedute
+  const elenco = r.sedute || [...new Map(sess.map(a => [a.seduta_id, {id: a.seduta_id, nome: a.nome_seduta, esercizi: []}])).values()];
+  const carta = s => {
+    const fatte = sess.filter(a => a.seduta_id === s.id);
+    const esercizi = [...s.esercizi];
+    for (const a of fatte) for (const e of a.esercizi) if (!esercizi.some(x => x.nome === e.nome)) esercizi.push({nome: e.nome, tipo: e.tipo});
+    return `<div class="blocco pila"><div class="riga"><h3>${esc(s.nome)}</h3><span class="chip">${fatte.length} ${fatte.length === 1 ? "seduta" : "sedute"}</span></div>
+      ${esercizi.map(x => cartaEsercizio(x.nome, x.tipo, fatte.map(a => ({data: a.data, e: a.esercizi.find(e => e.nome === x.nome)})).filter(y => y.e))).join("")}</div>`;
   };
   el.innerHTML = `<button class="link" type="button" id="r-indietro">‹ Storico</button>
     <div class="blocco"><div class="eyebrow">Scheda dello storico</div><h2 style="margin-top:4px">${esc(r.nome)}</h2>
-      <p class="sub" style="margin-top:4px">${esc(dataBella(r.dal))} – ${esc(dataBella(r.al))} · ${sch ? esc(sch.nome) : "tutte le schede"} · ${sess.length} sedute</p></div>
-    ${sess.length ? chiavi.map(cartaSeduta).join("") + bloccoAumento(sess, "Aumento dei carichi nel periodo")
-      : `<div class="blocco"><p class="vuoto">Nessuna seduta in questo periodo.</p></div>`}
+      <p class="sub" style="margin-top:4px">${sch ? esc(sch.nome) + " · " : ""}${elenco.length} allenamenti · ${sess.length} sedute${r.dal ? ` · ${esc(dataBreve(r.dal))} – ${esc(dataBreve(r.al))}` : ""}</p></div>
+    ${elenco.map(carta).join("")}
+    ${bloccoAumento(sess, "Aumento dei carichi")}
     <button class="pulsante pericolo piccolo" type="button" id="r-elimina" style="align-self:flex-start">Elimina questa scheda</button>`;
   $("r-indietro").onclick = () => { S.raccolta = null; render(); window.scrollTo(0, 0); };
   $("r-elimina").onclick = () => {
@@ -973,7 +973,7 @@ const GUIDE = {
       <p>Se segni i <b>giorni di allenamento</b>, Oggi ti mostra le prossime date. Puoi anche alternare due settimane diverse, per esempio lun-mer-ven e mar-gio-sab.</p>`},
   ],
   storico: () => [
-    {titolo: "Storico e progressi", testo: `<ul><li><b>Schede</b>: crea un periodo, per esempio "Aprile 2026", e dentro vedi ogni seduta (A, B, C) con i grafici dei carichi e delle zavorre, più quanto sono saliti i carichi in totale.</li>
+    {titolo: "Storico e progressi", testo: `<ul><li><b>Schede</b>: salva gli allenamenti che stai usando (per esempio A, B, C) con un nome come "Aprile 2026": dentro c'è un grafico per ogni esercizio con l'aumento del carico, più quanto sono saliti i carichi in totale.</li>
       <li><b>Andamento</b>: scegli un esercizio e vedi come cresce (massimale stimato, zavorra, secondi o ripetizioni).</li>
       <li><b>Peso corporeo</b>: si aggiorna con il peso che scrivi nelle sedute o in Altro.</li>
       <li><b>Diario</b>: tocca una seduta per vedere le serie fatte o eliminarla.</li></ul>`},

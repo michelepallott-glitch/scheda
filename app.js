@@ -447,7 +447,7 @@ function vistaLibero(el) {
     const conKg = conCarico(es.tipo), isoE = es.tipo === "isometria", u = ultimaVolta(null, es.nome);
     h += `<article class="blocco">
       <div class="es-testa"><h3>${esc(es.nome)}</h3><span style="display:flex;gap:6px;align-items:center"><span class="tipo">${TIPI[es.tipo] || ""}</span>
-        <button class="togli" type="button" data-togli="${k}" aria-label="Togli ${esc(es.nome)}">✕</button></span></div>
+        <button class="togli-es" type="button" data-togli="${k}" aria-label="Elimina ${esc(es.nome)}">Elimina</button></span></div>
       <div class="dett">recupero ${mmss(es.recupero_sec || 90)}</div>
       ${u ? `<div class="ultima">Ultima volta (${esc(dataBreve(u.data))}): ${esc(fmtSerie(u.e))}</div>` : `<div class="ultima">Prima volta: scrivi quello che fai.</div>`}
       <div class="serie ${conKg ? "" : "senza-kg"}">
@@ -992,9 +992,10 @@ function vistaStorico() {
     ${bloccoAumento(lista.slice().reverse(), "Aumento dei carichi da sempre")}
     ${bloccoPeso()}
     <div class="blocco"><h3 style="margin-bottom:4px">Diario</h3>${lista.slice(0, 60).map(a => `
-      <details class="sessione"><summary><span><b>${esc(a.nome_seduta)}</b> · ${esc(dataBella(a.data))}</span>
+      <details class="sessione" data-id="${esc(a.id)}" ${S.sessioneAperta === a.id ? "open" : ""}><summary><span><b>${esc(a.nome_seduta)}</b> · ${esc(dataBella(a.data))}</span>
         <span class="sub">${a.durata_min ? a.durata_min + "′ " : ""}${a.rpe ? "· fatica " + fmt(a.rpe) : ""}</span></summary>
-        <table style="margin-top:6px">${a.esercizi.map(e => `<tr><td>${esc(e.nome)}${e.variante ? `<div class="sub">${esc(e.variante)}</div>` : ""}</td><td class="num">${esc(fmtSerie(e))}</td></tr>`).join("")}</table>
+        <table style="margin-top:6px">${a.esercizi.map((e, i) => `<tr><td>${esc(e.nome)}${e.variante ? `<div class="sub">${esc(e.variante)}</div>` : ""}</td><td class="num">${esc(fmtSerie(e))}</td>
+          <td class="num" style="width:1%"><button type="button" class="togli-es" data-elimina-es="${esc(a.id)}" data-i="${i}" aria-label="Elimina ${esc(e.nome)} da questa seduta">Elimina</button></td></tr>`).join("")}</table>
         ${a.note ? `<p class="nota">${esc(a.note)}</p>` : ""}
         <button type="button" class="pulsante pericolo piccolo" data-elimina="${esc(a.id)}" style="margin-top:8px">Elimina seduta</button>
       </details>`).join("")}</div>`;
@@ -1003,6 +1004,15 @@ function vistaStorico() {
   el.querySelectorAll("details.esercizio-storico").forEach(d => d.addEventListener("toggle", () => {
     const aperti = new Set(memo.get("scheda-es-aperti") || []); d.open ? aperti.add(d.dataset.nome) : aperti.delete(d.dataset.nome); memo.set("scheda-es-aperti", [...aperti]);
   }));
+  el.querySelectorAll("details.sessione").forEach(d => d.addEventListener("toggle", () => { if (d.open) S.sessioneAperta = d.dataset.id; }));
+  // un esercizio inserito per sbaglio si toglie dalla seduta; se era l'unico, sparisce la seduta
+  el.querySelectorAll("[data-elimina-es]").forEach(b => b.onclick = () => {
+    const a = D.allenamenti.find(x => x.id === b.dataset.eliminaEs), e = a && a.esercizi[+b.dataset.i];
+    if (!e || !confirm(`Eliminare ${e.nome} da questa seduta?${a.esercizi.length === 1 ? " Era l'unico esercizio: sparisce anche la seduta." : ""}`)) return;
+    a.esercizi.splice(+b.dataset.i, 1);
+    if (!a.esercizi.length) D.allenamenti = D.allenamenti.filter(x => x !== a);
+    salva(); avvisa(`${e.nome} eliminato dalla seduta.`); renderFermo();
+  });
   el.querySelectorAll("[data-elimina]").forEach(b => b.onclick = () => {
     if (!confirm("Eliminare questa seduta dallo storico? Le progressioni già applicate restano.")) return;
     const a = D.allenamenti.find(x => x.id === b.dataset.elimina);

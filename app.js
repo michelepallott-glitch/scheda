@@ -720,9 +720,9 @@ function indicatore(e) {
   return Math.max(0, ...ss.map(s => s.rip || 0));
 }
 const UNITA = {pesi: "kg, massimale stimato", zavorrato: "kg di zavorra (o ripetizioni se a corpo libero)", isometria: "secondi, tenuta migliore", corpo_libero: "ripetizioni, serie migliore"};
-function grafico(punti, unita, H = 260) {
+function grafico(punti, unita, H = 260, etichette = false) {
   if (punti.length < 2) return `<p class="vuoto">Servono almeno due sedute per vedere l'andamento.</p>`;
-  const W = 640, m = {l: 62, r: 14, t: 16, b: 36};
+  const W = 640, m = {l: 62, r: 14, t: etichette ? 42 : 16, b: 36};
   const ys = punti.map(p => p.y), lo0 = Math.min(...ys), hi0 = Math.max(...ys);
   const marg = (hi0 - lo0) * 0.15 || 1, lo = lo0 < 0 ? lo0 - marg : Math.max(0, lo0 - marg), hi = hi0 + marg;
   const t0 = daIso(punti[0].data).getTime(), t1 = daIso(punti[punti.length - 1].data).getTime();
@@ -739,7 +739,19 @@ function grafico(punti, unita, H = 260) {
     <text x="${W - m.r}" y="${H - 6}" font-size="22" fill="var(--muted)" text-anchor="end">${esc(dataBreve(punti[punti.length - 1].data))}</text>
     <path d="${punti.map((p, i) => (i ? "L" : "M") + X(p.data).toFixed(1) + "," + Y(p.y).toFixed(1)).join("")}" fill="none" stroke="url(#${gid})" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
     ${punti.map((p, i) => `<circle cx="${X(p.data).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="${i === punti.length - 1 ? 7 : 5}" fill="${i === punti.length - 1 ? "var(--verde)" : "var(--arancio)"}" stroke="var(--surface)" stroke-width="2"><title>${esc(dataBreve(p.data))}: ${fmt(Math.round(p.y * 10) / 10)}${p.variante ? " · " + esc(p.variante) : ""}</title></circle>`).join("")}
+    ${etichette ? etichetteValori(punti, X, Y, W) : ""}
   </svg>`;
+}
+// il valore sopra ogni punto; se i punti sono troppo vicini se ne salta qualcuno, ma l'ultimo e il piu' alto restano
+function etichetteValori(punti, X, Y, W) {
+  const max = Math.max(...punti.map(p => p.y)), scelti = new Set([punti.length - 1, punti.findIndex(p => p.y === max)]);
+  let ultimaX = -Infinity;
+  punti.forEach((p, i) => { const x = X(p.data); if (x - ultimaX >= 40) { scelti.add(i); ultimaX = x; } });
+  return punti.map((p, i) => {
+    if (!scelti.has(i)) return "";
+    const x = X(p.data), ancora = x < 40 ? "start" : x > W - 40 ? "end" : "middle";
+    return `<text x="${x.toFixed(1)}" y="${(Y(p.y) - 14).toFixed(1)}" text-anchor="${ancora}" font-size="21" font-weight="800" fill="${i === punti.length - 1 ? "var(--verde)" : "var(--ink)"}">${fmt(Math.round(p.y * 100) / 100)}</text>`;
+  }).join("");
 }
 // ---------------------------------------------------------------- peso settimana per settimana
 // Ogni settimana (da lunedi') ha la media delle pesate; la variazione e' divisa per le settimane passate dalla
@@ -948,31 +960,35 @@ function vistaRaccolta(el, r) {
 
 // ---------------------------------------------------------------- progressi per esercizio
 /* Ogni esercizio e' riconosciuto dal nome, in qualunque seduta o giorno l'hai fatto (scheda o allenamento libero).
-   Per ogni settimana conta il valore migliore: carico o zavorra piu' alti, altrimenti secondi o ripetizioni. */
-function settimaneEsercizio(nome, lista) {
+   Un punto per seduta con il valore piu' alto di quella seduta: carico o zavorra, altrimenti secondi o ripetizioni. */
+function sessioniEsercizio(nome, lista) {
   const usi = [];
   for (const a of lista) { const e = a.esercizi.find(x => x.nome === nome); if (e && e.serie.length) usi.push({data: a.data, e}); }
   usi.reverse();
   const tipo = usi[usi.length - 1].e.tipo, carico = conCarico(tipo) && usi.some(x => caricoMax(x.e) > 0);
-  const per = new Map();
-  for (const x of usi) { const k = iso(lunedi(daIso(x.data))), v = carico ? caricoMax(x.e) : migliore(x.e); per.set(k, Math.max(per.get(k) ?? -Infinity, v)); }
-  return {tipo, carico, ultimaData: usi[usi.length - 1].data, settimane: [...per].sort((a, b) => a[0].localeCompare(b[0])).map(([data, y]) => ({data, y}))};
+  const punti = [];
+  for (const x of usi) {
+    const y = carico ? caricoMax(x.e) : migliore(x.e), p = punti[punti.length - 1];
+    if (p && p.data === x.data) p.y = Math.max(p.y, y); else punti.push({data: x.data, y, variante: x.e.variante});
+  }
+  return {tipo, carico, punti};
 }
 function bloccoEsercizi(lista) {
   const nomi = [...new Set(lista.flatMap(a => a.esercizi.filter(e => e.serie.length).map(e => e.nome)))];
   if (!nomi.length) return "";
   const aperti = new Set(memo.get("scheda-es-aperti") || []);
-  const dati = nomi.map(n => ({nome: n, ...settimaneEsercizio(n, lista)})).sort((a, b) => b.ultimaData.localeCompare(a.ultimaData));
+  const dati = nomi.map(n => ({nome: n, ...sessioniEsercizio(n, lista)})).sort((a, b) => b.punti[b.punti.length - 1].data.localeCompare(a.punti[a.punti.length - 1].data));
   return `<div class="blocco"><h3>Esercizi</h3>
-    <p class="sub" style="margin:4px 0 6px">Ogni esercizio, qualunque giorno o seduta tu l'abbia fatto. Il valore è il migliore della settimana; tocca per il grafico.</p>
+    <p class="sub" style="margin:4px 0 6px">Ogni esercizio, qualunque giorno o seduta tu l'abbia fatto. Un punto per seduta con il valore più alto; tocca per il grafico.</p>
     ${dati.map(d => {
-      const s = d.settimane, ora = s[s.length - 1], prima = s[s.length - 2];
+      const s = d.punti, ora = s[s.length - 1], prima = s[s.length - 2], record = Math.max(...s.map(p => p.y));
       const u = d.tipo === "isometria" ? "s" : d.carico ? "kg" : "rip", diff = prima ? ora.y - prima.y : null;
       const cls = diff == null || Math.abs(diff) < 0.001 ? "" : diff > 0 ? "su" : "giu";
       return `<details class="esercizio-storico" data-nome="${esc(d.nome)}" ${aperti.has(d.nome) ? "open" : ""}><summary>
-          <span><b>${esc(d.nome)}</b><span class="sub" style="display:block">${d.tipo === "zavorrato" && d.carico ? "zavorra " : ""}${fmt(ora.y)} ${u} · settimana del ${esc(dataBreve(ora.data))}</span></span>
-          <span class="variazione ${cls}">${diff == null ? "prima settimana" : `${segno(diff, 2)} ${u} vs sett. prima`}</span></summary>
-        ${s.length > 1 ? `<div class="grafico" style="margin-top:6px">${grafico(s, u, 190)}</div>` : `<p class="sub" style="margin-top:6px">Serve almeno un'altra settimana per vedere l'andamento.</p>`}
+          <span><b>${esc(d.nome)}</b><span class="sub" style="display:block">${d.tipo === "zavorrato" && d.carico ? "zavorra " : ""}${fmt(ora.y)} ${u} · ${esc(dataBreve(ora.data))}${s.length > 1 ? ` · record ${fmt(record)} ${u}` : ""}</span></span>
+          <span class="variazione ${cls}">${diff == null ? "prima seduta" : `${segno(diff, 2)} ${u} vs seduta prima`}</span></summary>
+        ${s.length > 1 ? `<div class="grafico" style="margin-top:6px">${grafico(s, u, 220, true)}</div>
+          <div class="sub">${s.length} sedute, dalla prima (${esc(dataBreve(s[0].data))}) all'ultima. In verde l'ultima.</div>` : `<p class="sub" style="margin-top:6px">Serve almeno un'altra seduta per vedere l'andamento.</p>`}
         <button type="button" class="togli-es" data-elimina-nome="${esc(d.nome)}" style="margin-top:8px">Elimina dallo storico</button>
       </details>`;
     }).join("")}</div>`;
@@ -1145,7 +1161,7 @@ const GUIDE = {
       <p>L'app ti dice com'è andata e ti propone le <b>progressioni</b>: più carico, la variante successiva o un obiettivo più alto. Puoi applicarle, scrivere un carico tuo o lasciare com'è.</p>
       <p>Se esci a metà seduta, le serie segnate restano salvate.</p>`},
     {titolo: "Allenamento libero", testo: `<p>Non segui una scheda fissa? Tocca <b>Avvia allenamento libero</b> in alto: parti vuoto, aggiungi gli esercizi man mano e alla fine salvi la seduta nello storico.</p>
-      <p>Le schede non cambiano, ma i progressi di ogni esercizio li vedi comunque in <b>Storico → Esercizi</b>, settimana per settimana.</p>`},
+      <p>Le schede non cambiano, ma i progressi di ogni esercizio li vedi comunque in <b>Storico → Esercizi</b>, seduta per seduta.</p>`},
   ],
   schede: () => [
     {titolo: "Le tue schede", testo: `<p>Una scheda è il tuo programma: contiene una o più <b>sedute</b> (per esempio A, B, C) che si alternano in ordine.</p>
@@ -1160,7 +1176,7 @@ const GUIDE = {
   ],
   storico: () => [
     {titolo: "Storico e progressi", testo: `<ul><li><b>Schede</b>: salva gli allenamenti che stai usando (per esempio A, B, C) con un nome come "Aprile 2026": dentro c'è un grafico per ogni esercizio con l'aumento del carico, più quanto sono saliti i carichi in totale.</li>
-      <li><b>Esercizi</b>: ogni esercizio con il migliore della settimana e il confronto con la settimana prima, qualunque giorno tu l'abbia fatto. Tocca per il grafico.</li>
+      <li><b>Esercizi</b>: ogni esercizio seduta per seduta, con il valore più alto di ogni seduta scritto sul grafico e il confronto con la seduta prima, qualunque giorno tu l'abbia fatto.</li>
       <li><b>Peso corporeo</b>: si aggiorna con il peso che scrivi nelle sedute o in Altro.</li>
       <li><b>Diario</b>: tocca una seduta per vedere le serie fatte o eliminarla.</li></ul>`},
   ],

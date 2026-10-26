@@ -1,6 +1,6 @@
-// Service worker: tiene l'app in cache per usarla anche senza connessione (in palestra spesso manca).
+﻿// Service worker: tiene l'app in cache per usarla anche senza connessione (in palestra spesso manca).
 // Alza VERSIONE a ogni modifica dei file, cosi' i telefoni scaricano la nuova versione.
-const VERSIONE = "scheda-v11";
+const VERSIONE = "scheda-v12";
 const FILE = ["./", "index.html", "app.js", "stile.css", "manifest.webmanifest",
   "icone/icona-192.png", "icone/icona-512.png", "icone/apple-touch-icon.png"];
 
